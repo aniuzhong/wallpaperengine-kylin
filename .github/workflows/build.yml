@@ -1,13 +1,14 @@
-name: build-and-push
+name: build
 
-# The base image ghcr.io/<owner>/kylin:10.1-sp1-hwe-2303 is NOT built in CI —
-# it must be extracted from the official install media's squashfs
-# (scripts/extract-base.sh) and pushed from a local machine.
-# CI only: pull base -> fetch upstream & apply patches -> build -> push runtime.
+# The Kylin base image ghcr.io/<owner>/kylin:10.1-sp1-hwe-2303 is NOT built
+# in CI — it is extracted from the official install media's squashfs
+# (scripts/extract-base.sh) and pushed from a local machine. It exists only
+# as the CI build vehicle; the deliverable is a .deb.
 #
-# src/ and cef/ are pre-provisioned locally (direct GitHub/spotifycdn access
-# stalls from this network); on CI they only contain placeholders, so the
-# container clones/downloads on its own.
+# CI: pull base -> fetch upstream at the pinned commit -> apply patches ->
+# build engine + shim -> assemble deb -> upload artifact. GitHub Releases
+# will be enabled once the UI ships; until then every run only produces a
+# build artifact.
 
 on:
   push:
@@ -19,22 +20,18 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/linux-wallpaperengine
-  BASE: ghcr.io/${{ github.repository_owner }}/kylin:10.1-sp1-hwe-2303
+permissions:
+  contents: read
+  packages: read
 
 jobs:
-  build:
+  package:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v4
 
-      # base (3.5G) + loaded runtime (5.2G) + intermediate build layers can
-      # easily hit the default disk ceiling on ubuntu-latest; clear the big
-      # preinstalled items first
+      # base (3.5G) + build layers can approach the default disk ceiling on
+      # ubuntu-latest; clear the big preinstalled items first
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
@@ -44,9 +41,8 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      # The base image is public, so pulling needs no auth; pushes use the
-      # workflow's own GITHUB_TOKEN (permissions: packages: write above),
-      # hence no extra secrets are required.
+      # The base image may be private; GITHUB_TOKEN can pull it within the
+      # same owner account.
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
@@ -54,30 +50,32 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute tags
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE }}
-          tags: |
-            type=raw,value=kylin-10.1
-            type=sha,format=short,prefix=kylin-10.1-
-            type=ref,event=tag
+      - name: Determine version
+        id: ver
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.1.0-dev+$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          target: runtime
-          build-args: |
-            BASE=${{ env.BASE }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          push: true
-          load: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Build deb
+        run: |
+          docker buildx build \
+            --target export \
+            --output type=local,dest=out \
+            --build-arg DEB_VERSION="${{ steps.ver.outputs.version }}" \
+            .
 
-      # Headless smoke test: if --help prints, every dynamic library resolved
       - name: Smoke test
-        run: docker run --rm "$IMAGE:kylin-10.1" --help > /dev/null
+        run: |
+          ls -la out/
+          dpkg-deb --info out/pkg.deb | head -12
+
+      - name: Upload artifact (every run)
+        uses: actions/upload-artifact@v4
+        with:
+          name: "linux-wallpaperengine-kylin_${{ steps.ver.outputs.version }}_amd64"
+          path: out/pkg.deb
+          if-no-files-found: error
+

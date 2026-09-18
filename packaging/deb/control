@@ -1,0 +1,12 @@
+Package: linux-wallpaperengine-kylin
+Version: @VERSION@
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: Aniuzhong <101186392+aniuzhong@users.noreply.github.com>
+Depends: libglew2.1, libglfw3, libmpv1, libavcodec58, libavformat58, libavutil56, libswresample3, libsdl2-2.0-0, liblz4-1, libpulse0
+Description: Wallpaper Engine wallpapers on Kylin V10 SP1 (linux-wallpaperengine)
+ Repackaging of linux-wallpaperengine for Kylin V10 SP1 with UKUI desktop
+ integration: renders Steam Workshop wallpapers as the desktop background.
+ Includes the peony interposition shim for transparent desktop icon support.
+ The engine binary and libraries install under /opt/linux-wallpaperengine.

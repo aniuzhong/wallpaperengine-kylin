@@ -1,16 +1,14 @@
-# Containerized build of linux-wallpaperengine on Kylin V10 SP1.
+# CI build vehicle: gives the GitHub Actions runner a Kylin V10 SP1 userland
+# identical to the target desktops. The deliverable is a .deb, exported from
+# the `export` stage; the base image itself is provisioned by
+# scripts/extract-base.sh and pushed to ghcr from a local machine.
 #
-# Layered design (following how official distro images are organized):
-#   kylin:10.1-sp1-hwe-2303   base image, imported from the official install
-#                             media by scripts/extract-base.sh
-#   deps                      toolchain (with CMake >= 3.22.1)
-#   builder                   upstream source + GCC 9.3 C++20 compat patch + build
-#   runtime                   slim runtime image
+# Local builds do NOT need docker — the Kylin host builds natively:
+#   cmake -S src/shim -B build/shim && cmake --build build/shim
+#   (the engine builds the same way from an upstream checkout)
 #
-# Stage-by-stage verification:
-#   docker build --target deps    -t lwpe-deps    .
-#   docker build --target builder -t lwpe-builder .
-#   docker build --target runtime -t lwpe         .
+# CI produces the deb:
+#   docker buildx build --target export --output type=local,dest=out .
 
 ARG BASE=ghcr.io/aniuzhong/kylin:10.1-sp1-hwe-2303
 
@@ -24,6 +22,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # CMake in the Kylin repos is only 3.16.3 while the glslang submodule
 # requires >= 3.22.1, so use the official Kitware binary instead of apt.
+# qtbase5-dev builds the peony shim (and later the UI).
 ARG CMAKE_VERSION=4.4.3
 ARG CMAKE_URL=https://cmake.org/files/v4.4
 
@@ -35,7 +34,7 @@ RUN apt-get update \
         libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
         libxxf86vm-dev libglm-dev libglfw3-dev libmpv-dev \
         libpulse-dev libfftw3-dev libfreetype-dev libdbus-1-dev zlib1g-dev \
-        libgmp-dev \
+        libgmp-dev qtbase5-dev \
  && rm -rf /var/lib/apt/lists/*
 
 RUN wget -q -O /tmp/cmake.tar.gz \
@@ -61,56 +60,52 @@ ENV GIT_TERMINAL_PROMPT=0 \
     GIT_HTTP_LOW_SPEED_TIME=30
 
 # Fetch upstream at the pinned commit (single path: local and CI builds are
-# identical) and apply the Kylin patch series.
-# GCC 9.3.0 only accepts -std=c++2a and lacks std::format / std::ranges /
-# std::views, hence the compat patch.
+# identical) and apply the Kylin patch series in lexicographic order:
+# 0001 gcc9/c++2a compat, 0002 x11 desktop window, 0003 scene native
+# resolution.
 RUN git init -q /src \
  && git -C /src remote add origin https://github.com/Almamu/linux-wallpaperengine.git \
  && git -C /src fetch -q --depth 1 origin "${LWPE_REF}" \
  && git -C /src checkout -q FETCH_HEAD \
  && git -C /src submodule update --init --recursive
-COPY patches/0001-gcc9-cxx2a-compat.patch /tmp/
-RUN cd /src && git apply --verbose /tmp/0001-gcc9-cxx2a-compat.patch
+COPY patches/ /tmp/patches/
+RUN cd /src && git apply --verbose /tmp/patches/*.patch
 
-# CEF is fetched from the official CDN by CMake (CMakeModules/DownloadCEF.cmake,
-# SHA1-verified); the Release flavor defaults to the minimal variant (~370MB).
-RUN cmake -S /src -B /build -DCMAKE_BUILD_TYPE=Release
+# Engine: built and installed straight into the deb payload tree. The
+# install carries RPATH $ORIGIN;$ORIGIN/lib;$ORIGIN/lib64, so bundled
+# libraries next to the binary resolve automatically.
+RUN cmake -S /src -B /build/engine -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/deb/opt/linux-wallpaperengine \
+ && cmake --build /build/engine -j"$(nproc)" \
+ && cmake --install /build/engine
 
-RUN cmake --build /build -j"$(nproc)" \
- && cmake --install /build
+# Peony interposition shim (LD_PRELOAD layer for the UKUI integration)
+COPY src/shim /src-shim
+RUN cmake -S /src-shim -B /build/shim -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/deb/opt/linux-wallpaperengine \
+ && cmake --build /build/shim -j"$(nproc)" \
+ && cmake --install /build/shim
 
-# Smoke check: artifact exists and every dynamic library resolves (the
-# runtime base is the same image family as the build base)
-RUN test -x /opt/linux-wallpaperengine/linux-wallpaperengine \
- && ! ldd /opt/linux-wallpaperengine/linux-wallpaperengine | grep -q "not found" \
- && ls -l /opt/linux-wallpaperengine/
+# Smoke check: artifacts exist and every dynamic library resolves in the
+# container (same userland as the target desktops)
+RUN test -x /deb/opt/linux-wallpaperengine/bin/linux-wallpaperengine \
+ && test -f /deb/opt/linux-wallpaperengine/lib/peony-alpha-shim.so \
+ && ! ldd /deb/opt/linux-wallpaperengine/bin/linux-wallpaperengine | grep -q "not found"
 
-# ------------------------------------------------------------------ runtime
-# The runtime base stays on the base image: libmpv/libSDL2/libGL/ffmpeg are
-# already shipped by this desktop system. GLEW and GLFW however are NOT in
-# the desktop image (Kylin only distributes them with the -dev packages) and
-# must be added or the binary will not start. Nothing else is required.
-FROM ${BASE} AS runtime
+# ----------------------------------------------------------------------- deb
+# Assemble the package from the payload tree plus the maintainer scripts.
+FROM builder AS deb
 
-ARG LWPE_REF
+ARG DEB_VERSION=0.1.0
 
-RUN apt-get update \
- && apt-get install -y --no-install-recommends libglew2.1 libglfw3 \
- && rm -rf /var/lib/apt/lists/*
+COPY packaging/deb /tmp/deb-control
+RUN mkdir -p /deb/DEBIAN \
+ && cp /tmp/deb-control/control /deb/DEBIAN/control \
+ && sed -i "s/@VERSION@/${DEB_VERSION}/" /deb/DEBIAN/control \
+ && [ ! -f /tmp/deb-control/postinst ] || { cp /tmp/deb-control/postinst /deb/DEBIAN/postinst; chmod 755 /deb/DEBIAN/postinst; } \
+ && dpkg-deb --build --root-owner-group /deb /pkg.deb
 
-COPY --from=builder /opt/linux-wallpaperengine /opt/linux-wallpaperengine
-
-# Verify once more: with the runtime libs in place nothing may be missing
-RUN ! ldd /opt/linux-wallpaperengine/linux-wallpaperengine | grep -q "not found"
-
-WORKDIR /opt/linux-wallpaperengine
-
-# The installed tree carries RPATH $ORIGIN;$ORIGIN/lib;$ORIGIN/lib64, so
-# bundled libraries next to the binary resolve automatically
-ENTRYPOINT ["/opt/linux-wallpaperengine/linux-wallpaperengine"]
-
-# ---- OCI annotations: visible on the ghcr page and in docker inspect ----
-LABEL org.opencontainers.image.title="linux-wallpaperengine (kylin)" \
-      org.opencontainers.image.description="linux-wallpaperengine built for Kylin V10 SP1 (upstream commit ${LWPE_REF} + kylin patches)" \
-      org.opencontainers.image.source="https://github.com/Almamu/linux-wallpaperengine" \
-      org.opencontainers.image.base.name="ghcr.io/aniuzhong/kylin:10.1-sp1-hwe-2303"
+# -------------------------------------------------------------------- export
+# CI exports this stage: `--output type=local,dest=out` yields out/pkg.deb
+FROM scratch AS export
+COPY --from=deb /pkg.deb /pkg.deb
