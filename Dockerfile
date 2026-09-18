@@ -93,7 +93,7 @@ RUN cmake -S /int -B /build/integration -DCMAKE_BUILD_TYPE=Release \
 # NOTE: upstream installs a FLAT layout (PREFIX/linux-wallpaperengine, no bin/)
 RUN test -x /deb/opt/linux-wallpaperengine/linux-wallpaperengine \
  && test -x /deb/opt/linux-wallpaperengine/bin/wallpaper-engine \
- && test -f /deb/opt/linux-wallpaperengine/lib/peony-alpha-shim.so \
+ && test -f /deb/opt/linux-wallpaperengine/lib/libpeony-alpha-shim.so \
  && ! ldd /deb/opt/linux-wallpaperengine/linux-wallpaperengine | grep -q "not found"
 
 # ----------------------------------------------------------------------- deb
