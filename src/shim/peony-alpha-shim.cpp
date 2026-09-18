@@ -87,13 +87,21 @@ static bool shim_enabled () {
 using pixmap_ctor3_t = void (*)(QPixmap*, const QString&, const char*, Qt::ImageConversionFlags);
 
 // PEONY_ALPHA_WALLPAPER is a colon-separated path list; a hit on any path
-// (or on any file's basename) triggers the replacement.
+// (or on any file's basename) triggers the replacement. Every file under
+// /var/lib/AccountsService/backgrounds/ also matches: accountsservice
+// normalizes user wallpapers into that store and peony loads the
+// normalized path at startup, so the list entry may not survive the round
+// trip.
+static constexpr const char* kAccountsBackgroundDir = "/var/lib/AccountsService/backgrounds/";
+
 static bool is_wallpaper_path (const QString& fileName) {
     const char* list = getenv ("PEONY_ALPHA_WALLPAPER");
     if (!list || !*list)
         return false;
     if (fileName.isEmpty ())
         return false;
+    if (fileName.startsWith (kAccountsBackgroundDir))
+        return true;
     QString base = QFileInfo (fileName).fileName ();
     const char* start = list;
     for (const char* p = list;; p++) {

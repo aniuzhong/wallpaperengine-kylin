@@ -12,6 +12,7 @@ struct Config {
     QString assetsDir;                       // --assets-dir
     QString workshopDir;                     // wallpaper library scan path (not an engine flag)
     QMap<QString, QString> screens;          // screen -> wallpaper ID (--screen-root/--bg)
+    QString display = ":0";                  // DISPLAY for the engine systemd unit
     QString scaling = "fill";                // --scaling
     QString clamp = "border";                // --clamp
     int fps = 30;                            // --fps

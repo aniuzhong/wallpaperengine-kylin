@@ -1,0 +1,47 @@
+#include "argvbuilder.h"
+
+QStringList buildArgv (const Config& config) {
+    QStringList argv;
+    argv << config.enginePath;
+
+    if (!config.assetsDir.isEmpty ())
+        argv << "--assets-dir" << config.assetsDir;
+
+    for (auto it = config.screens.begin (); it != config.screens.end (); ++it) {
+        argv << "--screen-root" << it.key () << "--bg" << it.value ();
+        if (!config.scaling.isEmpty ())
+            argv << "--scaling" << config.scaling;
+        if (!config.clamp.isEmpty ())
+            argv << "--clamp" << config.clamp;
+    }
+
+    argv << "--fps" << QString::number (config.fps);
+    if (!config.fullscreenPause)
+        argv << "--no-fullscreen-pause";
+
+    if (config.silent)
+        argv << "--silent";
+    else
+        argv << "--volume" << QString::number (config.volume);
+
+    if (config.disableParticles)
+        argv << "--disable-particles";
+    if (config.disableMouse)
+        argv << "--disable-mouse";
+    if (config.disableParallax)
+        argv << "--disable-parallax";
+
+    for (auto it = config.properties.begin (); it != config.properties.end (); ++it) {
+        argv << "--set-property" << it.key () + "=" + it.value ().toString ();
+    }
+
+    return argv;
+}
+
+QString buildCommandLine (const Config& config) {
+    QStringList quoted;
+    for (const QString& arg : buildArgv (config)) {
+        quoted << (arg.contains (' ') ? '"' + arg + '"' : arg);
+    }
+    return quoted.join (' ');
+}

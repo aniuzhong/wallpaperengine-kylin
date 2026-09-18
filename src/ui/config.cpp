@@ -35,6 +35,7 @@ Config Config::fromJson (const QJsonObject& obj) {
     config.enginePath = obj.value ("enginePath").toString (config.enginePath);
     config.assetsDir = obj.value ("assetsDir").toString (config.assetsDir);
     config.workshopDir = obj.value ("workshopDir").toString (config.workshopDir);
+    config.display = obj.value ("display").toString (config.display);
     config.scaling = obj.value ("scaling").toString (config.scaling);
     config.clamp = obj.value ("clamp").toString (config.clamp);
     config.fps = obj.value ("fps").toInt (config.fps);
@@ -74,6 +75,7 @@ QJsonObject Config::toJson () const {
     for (auto it = screens.begin (); it != screens.end (); ++it) {
 	screensJson.insert (it.key (), it.value ());
     }
+    obj.insert ("display", display);
     obj.insert ("screens", screensJson);
     obj.insert ("properties", QJsonObject::fromVariantMap (properties));
     return obj;
