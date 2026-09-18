@@ -79,18 +79,22 @@ RUN cmake -S /src -B /build/engine -DCMAKE_BUILD_TYPE=Release \
  && cmake --build /build/engine -j"$(nproc)" \
  && cmake --install /build/engine
 
-# Peony interposition shim (LD_PRELOAD layer for the UKUI integration)
-COPY src/shim /src-shim
-RUN cmake -S /src-shim -B /build/shim -DCMAKE_BUILD_TYPE=Release \
+# Integration sources (shim library + control binary) built through the
+# repo's root CMakeLists
+COPY CMakeLists.txt /int/CMakeLists.txt
+COPY src/ /int/src/
+RUN cmake -S /int -B /build/integration -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/deb/opt/linux-wallpaperengine \
- && cmake --build /build/shim -j"$(nproc)" \
- && cmake --install /build/shim
+ && cmake --build /build/integration -j"$(nproc)" \
+ && cmake --install /build/integration
 
 # Smoke check: artifacts exist and every dynamic library resolves in the
 # container (same userland as the target desktops)
-RUN test -x /deb/opt/linux-wallpaperengine/bin/linux-wallpaperengine \
+# NOTE: upstream installs a FLAT layout (PREFIX/linux-wallpaperengine, no bin/)
+RUN test -x /deb/opt/linux-wallpaperengine/linux-wallpaperengine \
+ && test -x /deb/opt/linux-wallpaperengine/bin/wallpaper-engine \
  && test -f /deb/opt/linux-wallpaperengine/lib/peony-alpha-shim.so \
- && ! ldd /deb/opt/linux-wallpaperengine/bin/linux-wallpaperengine | grep -q "not found"
+ && ! ldd /deb/opt/linux-wallpaperengine/linux-wallpaperengine | grep -q "not found"
 
 # ----------------------------------------------------------------------- deb
 # Assemble the package from the payload tree plus the maintainer scripts.

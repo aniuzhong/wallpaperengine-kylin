@@ -2,4 +2,5 @@
 .git
 .github
 backup/
+build/
 README.md
