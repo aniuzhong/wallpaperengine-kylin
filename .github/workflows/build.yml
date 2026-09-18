@@ -1,0 +1,83 @@
+name: build-and-push
+
+# The base image ghcr.io/<owner>/kylin:10.1-sp1-hwe-2303 is NOT built in CI —
+# it must be extracted from the official install media's squashfs
+# (scripts/extract-base.sh) and pushed from a local machine.
+# CI only: pull base -> fetch upstream & apply patches -> build -> push runtime.
+#
+# src/ and cef/ are pre-provisioned locally (direct GitHub/spotifycdn access
+# stalls from this network); on CI they only contain placeholders, so the
+# container clones/downloads on its own.
+
+on:
+  push:
+    branches: [master, main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/linux-wallpaperengine
+  BASE: ghcr.io/${{ github.repository_owner }}/kylin:10.1-sp1-hwe-2303
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # base (3.5G) + loaded runtime (5.2G) + intermediate build layers can
+      # easily hit the default disk ceiling on ubuntu-latest; clear the big
+      # preinstalled items first
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+                      /opt/hostedtoolcache/CodeQL /usr/local/lib/android || true
+          sudo docker image prune -af || true
+          df -h /
+
+      - uses: docker/setup-buildx-action@v3
+
+      # The base image is public, so pulling needs no auth; pushes use the
+      # workflow's own GITHUB_TOKEN (permissions: packages: write above),
+      # hence no extra secrets are required.
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=kylin-10.1
+            type=sha,format=short,prefix=kylin-10.1-
+            type=ref,event=tag
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runtime
+          build-args: |
+            BASE=${{ env.BASE }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          push: true
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Headless smoke test: if --help prints, every dynamic library resolved
+      - name: Smoke test
+        run: docker run --rm "$IMAGE:kylin-10.1" --help > /dev/null
