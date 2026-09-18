@@ -10,15 +10,15 @@ find_package(X11 REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(XCB REQUIRED xcb)
 
-# ---- lwe-control
+# ---- wallpaper-engine
 # UI / CLI control surface for the integration(scaffold: config + selftest)
-add_executable(lwe-control
+add_executable(wallpaper-engine
     src/ui/main.cpp
     src/ui/config.cpp
 )
-target_link_libraries(lwe-control PRIVATE Qt5::Core)
-target_include_directories(lwe-control PRIVATE src/ui)
-target_compile_options(lwe-control PRIVATE -Wall -Wextra)
+target_link_libraries(wallpaper-engine PRIVATE Qt5::Core)
+target_include_directories(wallpaper-engine PRIVATE src/ui)
+target_compile_options(wallpaper-engine PRIVATE -Wall -Wextra)
 
 # ---- peony-alpha-shim
 # LD_PRELOAD interposition library: makes peony-qt-desktop's background
@@ -33,6 +33,6 @@ target_include_directories(peony-alpha-shim PRIVATE ${Qt5Gui_INCLUDE_DIRS} ${X11
 target_link_libraries(peony-alpha-shim PRIVATE ${X11_LIBRARIES} ${XCB_LIBRARIES} dl)
 
 # ---- install
-install(TARGETS lwe-control peony-alpha-shim
+install(TARGETS wallpaper-engine peony-alpha-shim
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib)

@@ -5,8 +5,6 @@
 #include <QJsonDocument>
 #include <QStandardPaths>
 
-namespace LWE {
-
 QString Config::configDir () {
     const QString base = QStandardPaths::writableLocation (QStandardPaths::GenericConfigLocation);
     return base + "/lwe-dynamic-wallpaper";
@@ -91,4 +89,3 @@ bool Config::save () const {
     return true;
 }
 
-} // namespace LWE

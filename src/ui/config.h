@@ -5,8 +5,6 @@
 #include <QString>
 #include <QVariantMap>
 
-namespace LWE {
-
 // The config file is a JSON projection of linux-wallpaperengine's CLI
 // arguments. Every field maps to an engine flag.
 struct Config {
@@ -34,4 +32,3 @@ struct Config {
     static Config fromJson (const QJsonObject& obj);
 };
 
-} // namespace LWE
