@@ -25,6 +25,11 @@ QString unitState (const QString& unit) {
 }
 
 QString primaryScreenName () {
+    // the e2e test runs a plain QCoreApplication (see QTEST_GUILESS_MAIN
+    // below): primaryScreen() would dereference a null private instance,
+    // so only ask for a screen when a Gui application actually exists
+    if (!qobject_cast<QGuiApplication*> (QCoreApplication::instance ()))
+        return QString ("DP-0");
     return QGuiApplication::primaryScreen () ? QGuiApplication::primaryScreen ()->name () : QString ("DP-0");
 }
 
@@ -132,5 +137,8 @@ private:
     QString m_screen;
 };
 
-QTEST_MAIN (CliE2eTest)
+// QTEST_GUILESS_MAIN: the headless CLI control plane needs no platform
+// plugin — a QGuiApplication (QTEST_MAIN, Gui is linked for QScreen) cannot
+// initialize in the container test stage where no display exists.
+QTEST_GUILESS_MAIN (CliE2eTest)
 #include "cli_e2e_test.moc"

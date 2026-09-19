@@ -4,16 +4,17 @@
 # scripts/extract-base.sh and pushed to ghcr from a local machine.
 #
 # Local builds do NOT need docker — the Kylin host builds natively:
-#   cmake -S src/shim -B build/shim && cmake --build build/shim
-#   (the engine builds the same way from an upstream checkout)
+#   cmake -S . -B build && cmake --build build    (controller, shim, tests)
+#   (the engine builds the same way from an upstream checkout with the
+#    patch series applied; it needs cmake >= 3.22 for the glslang submodule)
 #
 # CI produces the deb:
 #   docker buildx build --target export --output type=local,dest=out .
 
 ARG BASE=ghcr.io/aniuzhong/kylin:10.1-sp1-hwe-2303
 
-# Upstream anchor: the single source of truth for reproducible builds.
-ARG LWPE_REF=b016d7d1fdcf4e5fd2f9c9fa420a8aaa07fee02d
+# Upstream provenance lives in the seed: third_party/linux-wallpaperengine
+# is upstream Almamu/linux-wallpaperengine at b016d7d with patches/ applied.
 
 # --------------------------------------------------------------------- deps
 FROM ${BASE} AS deps
@@ -47,47 +48,29 @@ ENV PATH=/opt/cmake/bin:$PATH
 # ------------------------------------------------------------------ builder
 FROM deps AS builder
 
-# ARGs do not cross stage boundaries; re-declare to inherit the global value
-# (pass --build-arg LWPE_REF=main to try the latest upstream: a patch that no
-# longer applies fails the build instead of silently producing a broken
-# artifact).
-ARG LWPE_REF
-
-# A source checkout that must never prompt for credentials nor hang on a
-# stalled connection
+# Upstream provenance: cmake fetches the engine at the pinned LWPE_REF and
+# applies the patches/ series — the same `cmake -DBUILD_ENGINE=ON` a local
+# Kylin host runs. A patch that no longer applies fails the build instead of
+# producing a broken deb.
 ENV GIT_TERMINAL_PROMPT=0 \
     GIT_HTTP_LOW_SPEED_LIMIT=1024 \
     GIT_HTTP_LOW_SPEED_TIME=30
 
-# Fetch upstream at the pinned commit (single path: local and CI builds are
-# identical) and apply the Kylin patch series in lexicographic order:
-# 0001 gcc9/c++2a compat, 0002 x11 desktop window, 0003 scene native
-# resolution.
-RUN git init -q /src \
- && git -C /src remote add origin https://github.com/Almamu/linux-wallpaperengine.git \
- && git -C /src fetch -q --depth 1 origin "${LWPE_REF}" \
- && git -C /src checkout -q FETCH_HEAD \
- && git -C /src submodule update --init --recursive
-COPY patches/ /tmp/patches/
-RUN cd /src && git apply --verbose /tmp/patches/*.patch
-
-# Engine: built and installed straight into the deb payload tree. The
-# install carries RPATH $ORIGIN;$ORIGIN/lib;$ORIGIN/lib64, so bundled
-# libraries next to the binary resolve automatically.
-RUN cmake -S /src -B /build/engine -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=/deb/opt/linux-wallpaperengine \
- && cmake --build /build/engine -j"$(nproc)" \
- && cmake --install /build/engine
-
-# Integration sources (shim library + control binary) built through the
-# repo's root CMakeLists
 COPY CMakeLists.txt /int/CMakeLists.txt
 COPY src/ /int/src/
+COPY patches/ /int/patches/
+
+# One cmake entry for everything: engine (seeded tree) + controller + shim.
+# Engine installs into the payload prefix and is merged into the deb tree
+# below; the controller and shim install straight into it.
 RUN cmake -S /int -B /build/integration -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/deb/opt/linux-wallpaperengine \
+        -DBUILD_ENGINE=ON \
         -DBUILD_TESTING=OFF \
  && cmake --build /build/integration -j"$(nproc)" \
- && cmake --install /build/integration
+ && cmake --install /build/integration \
+ && mkdir -p /deb/opt/linux-wallpaperengine \
+ && cp -a /build/integration/payload/. /deb/opt/linux-wallpaperengine/
 
 # Smoke check: artifacts exist and every dynamic library resolves in the
 # container (same userland as the target desktops)
@@ -124,7 +107,7 @@ RUN cmake -S /int -B /build/test -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_TESTING=ON \
  && cmake --build /build/test -j"$(nproc)" \
  && cd /build/test \
- && ctest --output-on-failure -E "shim_hook_test" \
+ && QT_QPA_PLATFORM=offscreen ctest --output-on-failure -E "shim_hook_test" \
  && echo "all tests passed" > /TESTS_PASSED
 
 # -------------------------------------------------------------------- export

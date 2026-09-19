@@ -3,4 +3,6 @@
 .github
 backup/
 build/
+tmp/
 README.md
+third_party/

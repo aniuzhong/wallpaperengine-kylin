@@ -4,7 +4,6 @@
 // and survives a UI exit.
 #include "cli.h"
 #include "config.h"
-#include "mainwindow.h"
 #include "wallpaperui/wallpaperui.h"
 
 #include <QApplication>
@@ -46,15 +45,9 @@ int main (int argc, char** argv) {
         return config.save () ? 0 : 1;
     }
 
-    if (args.contains ("--wallpaper-ui")) {
-        // M0 scaffold of the new frontend behind a flag; it becomes the
-        // default entry at M2 once parity is signed off (tmp/plan.md)
-        WallpaperUI window;
-        window.show ();
-        return app->exec ();
-    }
-
-    MainWindow window;
+    // Wallpaper UI is the only GUI: `wallpaper-engine` without arguments
+    // opens it; the headless CLI remains the automation surface
+    WallpaperUI window;
     window.show ();
     return app->exec ();
 }
