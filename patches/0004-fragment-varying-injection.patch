@@ -1,8 +1,6 @@
-diff --git a/src/WallpaperEngine/Render/Shaders/ShaderUnit.cpp b/src/WallpaperEngine/Render/Shaders/ShaderUnit.cpp
-index fcc03fc..9d1f052 100644
 --- a/src/WallpaperEngine/Render/Shaders/ShaderUnit.cpp
 +++ b/src/WallpaperEngine/Render/Shaders/ShaderUnit.cpp
-@@ -414,6 +414,48 @@ std::string ShaderUnit::applyLinkedVaryingCompatibility (std::string source) con
+@@ -414,6 +414,47 @@
      return source;
  }
  
@@ -11,7 +9,6 @@ index fcc03fc..9d1f052 100644
 +    // stage without declaring them (the original compiler forwards varyings
 +    // between stages automatically); re-declare the missing ones so the
 +    // fragment unit compiles
-+    fprintf (stderr, "[inj] frag unit entered, link=%p\n", (void*) this->m_link);
 +    if (this->m_type != GLSLContext::UnitType_Fragment || this->m_link == nullptr) {
 +	return source;
 +    }
@@ -51,52 +48,7 @@ index fcc03fc..9d1f052 100644
  std::string ShaderUnit::applyFragmentTexCoordCompatibility (std::string source) const {
      if (this->m_type != GLSLContext::UnitType_Fragment) {
  	return source;
-@@ -662,7 +704,7 @@ const std::string& ShaderUnit::compile () {
- 
-     for (const auto& [name, value] : this->m_overrideCombos) {
- 	std::string uppercase;
--	std::ranges::transform (name, std::back_inserter (uppercase), ::toupper);
-+	std::transform (name.begin (), name.end (), std::back_inserter (uppercase), ::toupper);
- 
- 	if (!addedCombos.contains (uppercase)) {
- 	    this->m_final += DEFINE_COMBO (uppercase, value);
-@@ -673,7 +715,7 @@ const std::string& ShaderUnit::compile () {
-     // now add all the combos to the source
-     for (const auto& [name, value] : this->m_combos) {
- 	std::string uppercase;
--	std::ranges::transform (name, std::back_inserter (uppercase), ::toupper);
-+	std::transform (name.begin (), name.end (), std::back_inserter (uppercase), ::toupper);
- 
- 	if (!addedCombos.contains (uppercase)) {
- 	    this->m_final += DEFINE_COMBO (uppercase, value);
-@@ -683,7 +725,7 @@ const std::string& ShaderUnit::compile () {
- 
-     for (const auto& [name, value] : this->m_discoveredCombos) {
- 	std::string uppercase;
--	std::ranges::transform (name, std::back_inserter (uppercase), ::toupper);
-+	std::transform (name.begin (), name.end (), std::back_inserter (uppercase), ::toupper);
- 
- 	if (!addedCombos.contains (uppercase)) {
- 	    this->m_final += DEFINE_COMBO (uppercase, value);
-@@ -694,7 +736,7 @@ const std::string& ShaderUnit::compile () {
-     if (this->m_link != nullptr) {
- 	for (const auto& [name, value] : this->m_link->getCombos ()) {
- 	    std::string uppercase;
--	    std::ranges::transform (name, std::back_inserter (uppercase), ::toupper);
-+	    std::transform (name.begin (), name.end (), std::back_inserter (uppercase), ::toupper);
- 
- 	    if (!addedCombos.contains (uppercase)) {
- 		this->m_final += DEFINE_COMBO (uppercase, value);
-@@ -704,7 +746,7 @@ const std::string& ShaderUnit::compile () {
- 
- 	for (const auto& [name, value] : this->m_link->getDiscoveredCombos ()) {
- 	    std::string uppercase;
--	    std::ranges::transform (name, std::back_inserter (uppercase), ::toupper);
-+	    std::transform (name.begin (), name.end (), std::back_inserter (uppercase), ::toupper);
- 
- 	    if (!addedCombos.contains (uppercase)) {
- 		this->m_final += DEFINE_COMBO (uppercase, value);
-@@ -715,7 +757,7 @@ const std::string& ShaderUnit::compile () {
+@@ -715,7 +756,7 @@
  
      // this should be the rest of the shader
      this->m_final
@@ -105,11 +57,9 @@ index fcc03fc..9d1f052 100644
  
      // the pass itself handles shader compilation, the unit doesn't have enough information for this step
      return this->m_final;
-diff --git a/src/WallpaperEngine/Render/Shaders/ShaderUnit.h b/src/WallpaperEngine/Render/Shaders/ShaderUnit.h
-index 0a5d5d6..c07efe4 100644
 --- a/src/WallpaperEngine/Render/Shaders/ShaderUnit.h
 +++ b/src/WallpaperEngine/Render/Shaders/ShaderUnit.h
-@@ -100,6 +100,7 @@ private:
+@@ -100,6 +100,7 @@
       * Adjusts vertex varyings when a workshop shader declares a narrower vertex type than its fragment peer.
       */
      [[nodiscard]] std::string applyLinkedVaryingCompatibility (std::string source) const;
