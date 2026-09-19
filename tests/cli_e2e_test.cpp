@@ -1,6 +1,6 @@
 // T3 end-to-end test of the headless CLI against the real systemd user
 // manager. Uses the real config but a dedicated test unit name
-// (lwe-e2e-test) and restores the previous wallpaper selection afterwards,
+// (linux-wallpaperengine-e2e-test) and restores the previous wallpaper selection afterwards,
 // so the user's desktop state is preserved.
 #include "../src/ui/config.h"
 #include "../src/ui/systemd.h"
@@ -15,7 +15,7 @@
 #endif
 
 namespace {
-constexpr const char* kTestUnit = "lwe-e2e-test";
+constexpr const char* kTestUnit = "linux-wallpaperengine-e2e-test";
 
 QString unitState (const QString& unit) {
     QProcess process;
@@ -100,7 +100,7 @@ private slots:
         QCOMPARE (statusOut.exitCode, 0);
         const QJsonObject status =
             QJsonDocument::fromJson (statusOut.stdoutBytes).object ().value ("status").toObject ();
-        QCOMPARE (status.value ("unit").toString (), QString ("lwe-e2e-test"));
+        QCOMPARE (status.value ("unit").toString (), QString ("linux-wallpaperengine-e2e-test"));
         QVERIFY (status.value ("state").isString ());
         QCOMPARE (status.value ("screens").toObject ().value (m_screen).toString (), m_target);
 

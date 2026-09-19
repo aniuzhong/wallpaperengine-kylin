@@ -63,4 +63,7 @@ private:
     bool m_subscribed = false;
 };
 
+// Reload the user manager so freshly written unit files are picked up.
+bool daemonReload (Error* error = nullptr);
+
 } // namespace SystemdLayer

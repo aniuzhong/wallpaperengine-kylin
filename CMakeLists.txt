@@ -52,6 +52,9 @@ install(TARGETS wallpaper-engine peony-alpha-shim
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib)
 
-# ---- tests
-enable_testing()
-add_subdirectory(tests)
+# ---- tests (off for the deb integration build stage, which has no tests/)
+option (BUILD_TESTING "Build the test tree" ON)
+if (BUILD_TESTING)
+    enable_testing ()
+    add_subdirectory (tests)
+endif ()

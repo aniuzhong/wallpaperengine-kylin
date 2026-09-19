@@ -85,6 +85,7 @@ COPY CMakeLists.txt /int/CMakeLists.txt
 COPY src/ /int/src/
 RUN cmake -S /int -B /build/integration -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/deb/opt/linux-wallpaperengine \
+        -DBUILD_TESTING=OFF \
  && cmake --build /build/integration -j"$(nproc)" \
  && cmake --install /build/integration
 
@@ -108,6 +109,23 @@ RUN mkdir -p /deb/DEBIAN \
  && sed -i "s/@VERSION@/${DEB_VERSION}/" /deb/DEBIAN/control \
  && [ ! -f /tmp/deb-control/postinst ] || { cp /tmp/deb-control/postinst /deb/DEBIAN/postinst; chmod 755 /deb/DEBIAN/postinst; } \
  && dpkg-deb --build --root-owner-group /deb /pkg.deb
+
+# ---------------------------------------------------------------------- test
+# Pure-logic unit tests (T0): no bus, no display. The systemd/shim
+# integration suites self-skip without a session bus.
+FROM builder AS test
+
+COPY tests/ /int/tests/
+# T0 suites run everywhere; the systemd/shim integration suites self-skip
+# without a session bus. The shim hook suite additionally needs an X server
+# for its xcb probe, so it is excluded here.
+RUN cmake -S /int -B /build/test -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/deb/opt/linux-wallpaperengine \
+        -DBUILD_TESTING=ON \
+ && cmake --build /build/test -j"$(nproc)" \
+ && cd /build/test \
+ && ctest --output-on-failure -E "shim_hook_test" \
+ && echo "all tests passed" > /TESTS_PASSED
 
 # -------------------------------------------------------------------- export
 # CI exports this stage: `--output type=local,dest=out` yields out/pkg.deb

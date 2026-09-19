@@ -15,15 +15,28 @@
 # entries (verified the hard way).
 #
 # Usage: sudo ./scripts/extract-base.sh
+#        USB_DIR=<mountpoint> sudo ./scripts/extract-base.sh   # explicit media
 set -euo pipefail
 
 [ "$(id -u)" -eq 0 ] || { echo "must run as root: sudo $0" >&2; exit 1; }
 
-USB_DIR=${USB_DIR:-/media/hido/KYLINV10}
-WORK_DIR=${WORK_DIR:-/home/hido/.cache/kylin-v10-base}
+WORK_DIR=${WORK_DIR:-"${XDG_CACHE_HOME:-$HOME/.cache}/kylin-v10-base"}
 ROOTFS=$WORK_DIR/rootfs
 IMAGE=${IMAGE:-ghcr.io/aniuzhong/kylin:10.1-sp1-hwe-2303}
 IMAGE_ALIAS=${IMAGE_ALIAS:-ghcr.io/aniuzhong/kylin:10.1}
+
+# Locate the install media: an explicit USB_DIR wins; otherwise probe the
+# standard mount points for the casper squashfs.
+if [ -z "${USB_DIR:-}" ]; then
+    echo ">>> USB_DIR not set, probing mounted media for casper/filesystem.squashfs"
+    squashfs=$(find /media /run/media -maxdepth 4 -path '*/casper/filesystem.squashfs' -print -quit 2>/dev/null || true)
+    [ -n "$squashfs" ] && USB_DIR=$(dirname "$(dirname "$squashfs")")
+fi
+if [ -z "${USB_DIR:-}" ]; then
+    echo "cannot find the Kylin install media (no casper/filesystem.squashfs under /media or /run/media)" >&2
+    echo "set USB_DIR=<mountpoint> and retry" >&2
+    exit 1
+fi
 SQUASHFS=$USB_DIR/casper/filesystem.squashfs
 
 [ -f "$SQUASHFS" ] || { echo "cannot find $SQUASHFS — is the USB mounted?" >&2; exit 1; }

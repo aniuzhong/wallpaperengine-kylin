@@ -17,10 +17,10 @@ target_link_libraries (config_test PRIVATE Qt5::Core Qt5::Test)
 add_test (NAME config_test COMMAND config_test)
 
 # T3: headless CLI end-to-end against the real user manager (isolated by
-# the dedicated lwe-e2e-test unit name; config stays the user's own and is
+# the dedicated linux-wallpaperengine-e2e-test unit name; config stays the user's own and is
 # restored by cleanup)
 add_executable (cli_e2e_test cli_e2e_test.cpp ../src/ui/config.cpp ../src/ui/systemd.cpp ../src/ui/argvbuilder.cpp)
-target_link_libraries (cli_e2e_test PRIVATE Qt5::Core Qt5::Gui Qt5::DBus Qt5::Test)
+target_link_libraries (cli_e2e_test PRIVATE Qt5::Core Qt5::Gui Qt5::DBus Qt5::Test systemd_layer)
 target_compile_definitions (cli_e2e_test PRIVATE
     WALLPAPER_ENGINE_BIN="${CMAKE_BINARY_DIR}/wallpaper-engine")
 add_test (NAME cli_e2e_test COMMAND cli_e2e_test)

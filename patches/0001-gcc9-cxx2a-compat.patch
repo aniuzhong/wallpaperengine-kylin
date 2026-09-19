@@ -335,6 +335,73 @@ index 862c5f0..d25451f 100644
  	try {
  	    const auto contents = project->assetLocator->texture (filename);
  	    auto stream = BinaryReader (contents);
+diff --git a/src/WallpaperEngine/Render/Wallpapers/CScene.cpp b/src/WallpaperEngine/Render/Wallpapers/CScene.cpp
+index 4933440..fdfecd9 100644
+--- a/src/WallpaperEngine/Render/Wallpapers/CScene.cpp
++++ b/src/WallpaperEngine/Render/Wallpapers/CScene.cpp
+@@ -11,8 +11,6 @@
+ #include "WallpaperEngine/Data/Model/Wallpaper.h"
+ #include "WallpaperEngine/Data/Parsers/ObjectParser.h"
+ 
+-#include <ranges>
+-
+ extern float g_Time;
+ extern float g_TimeLast;
+ 
+@@ -170,7 +168,7 @@ CScene::~CScene () {
+     // bloom object is in the objects list, so no need to explicitly delete it
+     this->m_bloomObject = nullptr;
+ 
+-    for (const auto& val : this->m_objects | std::views::values) {
++    for (const auto& [key, val] : this->m_objects) {
+ 	delete val;
+     }
+ 
+@@ -194,7 +192,7 @@ Render::CObject* CScene::createObject (const Object& object) {
+ 	}
+ 
+ 	const auto dep
+-	    = std::ranges::find_if (this->getScene ().objects, [&cur] (const auto& o) { return o->id == cur; });
++	    = std::find_if (this->getScene ().objects.begin (), this->getScene ().objects.end (), [&cur] (const auto& o) { return o->id == cur; });
+ 
+ 	if (dep != this->getScene ().objects.end ()) {
+ 	    this->createObject (**dep);
+@@ -205,7 +203,7 @@ Render::CObject* CScene::createObject (const Object& object) {
+     if (object.parent.has_value ()) {
+ 	int parentId = object.parent.value ();
+ 
+-	const auto dep = std::ranges::find_if (this->getScene ().objects, [&parentId] (const auto& o) {
++	const auto dep = std::find_if (this->getScene ().objects.begin (), this->getScene ().objects.end (), [&parentId] (const auto& o) {
+ 	    return o->id == parentId;
+ 	});
+ 
+@@ -275,7 +273,7 @@ void CScene::addObjectToRenderOrder (const Object& object) {
+ 	}
+ 
+ 	// add the dependency to the list if it's created
+-	auto depIt = std::ranges::find_if (this->getScene ().objects, [&dep] (const auto& o) { return o->id == dep; });
++	auto depIt = std::find_if (this->getScene ().objects.begin (), this->getScene ().objects.end (), [&dep] (const auto& o) { return o->id == dep; });
+ 
+ 	if (depIt != this->getScene ().objects.end ()) {
+ 	    this->addObjectToRenderOrder (**depIt);
+@@ -285,7 +283,7 @@ void CScene::addObjectToRenderOrder (const Object& object) {
+     }
+ 
+     // ensure we're added only once to the render list
+-    const auto renderIt = std::ranges::find_if (this->m_objectsByRenderOrder, [&object] (const auto& o) {
++    const auto renderIt = std::find_if (this->m_objectsByRenderOrder.begin (), this->m_objectsByRenderOrder.end (), [&object] (const auto& o) {
+ 	return o->getId () == object.id;
+     });
+ 
+@@ -353,7 +351,7 @@ void CScene::renderFrame (const glm::ivec4& viewport) {
+ 	if (debug.objectFilter.has_value () && cur->getId () != debug.objectFilter.value ()) {
+ 	    continue;
+ 	}
+-	if (std::ranges::find (debug.skipObjects, cur->getId ()) != debug.skipObjects.end ()) {
++	if (std::find (debug.skipObjects.begin (), debug.skipObjects.end (), cur->getId ()) != debug.skipObjects.end ()) {
+ 	    continue;
+ 	}
+ 
 diff --git a/src/WallpaperEngine/Scripting/EngineObject.cpp b/src/WallpaperEngine/Scripting/EngineObject.cpp
 index b8399fa..3549efd 100644
 --- a/src/WallpaperEngine/Scripting/EngineObject.cpp

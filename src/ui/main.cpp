@@ -7,15 +7,31 @@
 #include "mainwindow.h"
 
 #include <QApplication>
+#include <QCoreApplication>
 #include <cstdio>
+#include <memory>
 
 int main (int argc, char** argv) {
-    QApplication app (argc, argv);
+    // argv must be inspected before any app instance exists: arguments()
+    // needs one, and WHICH instance is created decides whether the control
+    // plane can run without a display
+    QStringList args;
+    for (int i = 0; i < argc; i++)
+        args << QString::fromLocal8Bit (argv[i]);
+
+    const bool headless =
+        (args.size () > 1 && !args.at (1).startsWith ("-")) // control-plane command
+        || args.contains ("--selftest");
+
+    // headless control plane: `wallpaper-engine <command>` never opens a
+    // window and must work with no display at all (SSH, CI, pre-login), so
+    // it gets a plain QCoreApplication — no platform plugin is even loaded.
+    // Only the GUI path needs QApplication.
+    const std::unique_ptr<QCoreApplication> app =
+        headless ? std::unique_ptr<QCoreApplication> (new QCoreApplication (argc, argv))
+                 : std::unique_ptr<QCoreApplication> (new QApplication (argc, argv));
     QApplication::setApplicationName ("wallpaper-engine");
 
-    const QStringList args = QCoreApplication::arguments ();
-
-    // headless control plane: `wallpaper-engine <command>` never opens a window
     if (args.size () > 1 && !args.at (1).startsWith ("-"))
         return runCli (args.mid (1));
 
@@ -31,5 +47,5 @@ int main (int argc, char** argv) {
 
     MainWindow window;
     window.show ();
-    return app.exec ();
+    return app->exec ();
 }

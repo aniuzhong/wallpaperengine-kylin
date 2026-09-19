@@ -6,7 +6,7 @@
 #include "library.h"
 #include "systemd.h"
 
-#include <QApplication>
+#include <QCoreApplication>
 #include <QGuiApplication>
 #include <QJsonArray>
 #include <QFile>
@@ -46,19 +46,20 @@ void printUsage () {
         stdout);
 }
 
-QProcessEnvironment cliEnv () {
-    QProcessEnvironment env = QProcessEnvironment::systemEnvironment ();
-    env.insert ("LD_PRELOAD", QCoreApplication::applicationDirPath () + "/libpeony-alpha-shim.so");
-    return env;
-}
-
 int cmdStatus (bool json) {
     const Config config = Config::load ();
     const QString state = Systemd::unitState ();
     std::fprintf (stderr, "S3 state=%s\n", state.toUtf8 ().constData ());
+    // the unit file is what systemd actually runs; config.json is the
+    // editor's draft. Prefer the unit's own ExecStart so status tells the
+    // truth even after manual unit edits; fall back to config when the
+    // unit file does not exist (or carries no wallpaper) yet.
+    QMap<QString, QString> screens = Systemd::unitBackgrounds ();
+    if (screens.isEmpty ())
+        screens = config.screens;
     if (!json) {
         std::printf ("unit: %s (%s)\n", Systemd::unitName ().toUtf8 ().constData (), state.toUtf8 ().constData ());
-        for (auto it = config.screens.begin (); it != config.screens.end (); ++it)
+        for (auto it = screens.begin (); it != screens.end (); ++it)
             std::printf ("screen %s: %s\n", it.key ().toUtf8 ().constData (), it.value ().toUtf8 ().constData ());
         std::printf ("engine: %s\n", config.enginePath.toUtf8 ().constData ());
         return EXIT_OK;
@@ -66,10 +67,10 @@ int cmdStatus (bool json) {
     QJsonObject status;
     status.insert ("unit", Systemd::unitName ());
     status.insert ("state", state);
-    QJsonObject screens;
-    for (auto it = config.screens.begin (); it != config.screens.end (); ++it)
-        screens.insert (it.key (), it.value ());
-    status.insert ("screens", screens);
+    QJsonObject screensJson;
+    for (auto it = screens.begin (); it != screens.end (); ++it)
+        screensJson.insert (it.key (), it.value ());
+    status.insert ("screens", screensJson);
     status.insert ("enginePath", config.enginePath);
 
     QJsonObject root;
@@ -130,12 +131,19 @@ int cmdSwitch (const QStringList& args) {
     }
 
     Config updated = config;
-    if (updated.screens.isEmpty ())
-        updated.screens.insert (QGuiApplication::primaryScreen () ? QGuiApplication::primaryScreen ()->name ()
-                                                                  : QString ("DP-0"),
-                                id);
-    else
+    if (updated.screens.isEmpty ()) {
+        QString screenName ("DP-0");
+        // under the headless control plane there is no QGuiApplication and
+        // primaryScreen() would dereference a null private instance — only
+        // ask for a screen when a Gui application instance actually exists
+        if (qobject_cast<QGuiApplication*> (QCoreApplication::instance ())) {
+            if (const QScreen* screen = QGuiApplication::primaryScreen ())
+                screenName = screen->name ();
+        }
+        updated.screens.insert (screenName, id);
+    } else {
         updated.screens.begin ().value () = id; // single-screen v1
+    }
 
     if (!updated.save () || !Systemd::writeUnitFile (updated) || !Systemd::daemonReload ()
         || !Systemd::restartUnit ()) {
@@ -163,9 +171,10 @@ int cmdProperties (const QString& id) {
 
 int cmdSetupIntegration () {
     QString error;
-    QApplication::setOverrideCursor (Qt::WaitCursor);
+    // no wait cursor here: the headless control plane runs under a plain
+    // QCoreApplication (and a CLI has no cursor to override anyway); the GUI
+    // setup path in mainwindow.cpp sets its own
     const bool ok = Integration::setup (&error);
-    QApplication::restoreOverrideCursor ();
     if (ok) {
         std::printf ("integration configured: peony injected, desktop transparent\n");
         return EXIT_OK;

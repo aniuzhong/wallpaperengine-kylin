@@ -1,9 +1,36 @@
 #include "config.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
 #include <QStandardPaths>
+
+namespace {
+
+// First existing candidate wins; when none exists the caller's fallback is
+// kept so doctor/status report a concrete (MISSING) path instead of an
+// empty one.
+QString firstExisting (const QStringList& candidates, const QString& fallback) {
+    for (const QString& candidate : candidates)
+        if (!candidate.isEmpty () && QFile::exists (candidate))
+            return candidate;
+    return fallback;
+}
+
+// Steam install layouts, matching linux-wallpaperengine's own auto-detection
+// list (native, ~/.steam symlink, flatpak, snap).
+QStringList steamRoots () {
+    const QString home = QDir::homePath ();
+    return {
+        home + "/.steam/steam",
+        home + "/.local/share/Steam",
+        home + "/.var/app/com.valvesoftware.Steam/.local/share/Steam",
+        home + "/snap/steam/common/.local/share/Steam",
+    };
+}
+
+} // namespace
 
 QString Config::configDir () {
     const QString base = QStandardPaths::writableLocation (QStandardPaths::GenericConfigLocation);
@@ -15,11 +42,31 @@ QString Config::configPath () { return configDir () + "/config.json"; }
 Config Config::load () {
     Config config;
 
-    // known-good defaults for this machine's layout; a .deb install
-    // overrides them
-    config.enginePath = "/home/hido/仓库/linux-wallpaperengine/build/output/linux-wallpaperengine";
-    config.assetsDir = "/home/hido/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/wallpaper_engine/assets";
-    config.workshopDir = "/home/hido/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/workshop/content/431960";
+    // Resolve defaults from standard install locations; the config file
+    // (and a .deb install) overrides them.
+    QStringList engineCandidates {
+        "/opt/linux-wallpaperengine/linux-wallpaperengine", // deb payload layout
+        "/usr/local/bin/linux-wallpaperengine",
+        "/usr/bin/linux-wallpaperengine",
+    };
+    if (QCoreApplication::instance () != nullptr) {
+        const QString appDir = QCoreApplication::applicationDirPath ();
+        engineCandidates << appDir + "/../linux-wallpaperengine" // deb: bin/ sibling of the flat engine install
+                         << appDir + "/linux-wallpaperengine";   // flat dev tree
+    }
+    config.enginePath = firstExisting (engineCandidates, "/opt/linux-wallpaperengine/linux-wallpaperengine");
+
+    // an empty result is intentional: argvbuilder then omits --assets-dir
+    // and the engine runs its own auto-detection
+    QStringList assetsCandidates;
+    for (const QString& root : steamRoots ())
+        assetsCandidates << root + "/steamapps/common/wallpaper_engine/assets";
+    config.assetsDir = firstExisting (assetsCandidates, QString ());
+
+    QStringList workshopCandidates;
+    for (const QString& root : steamRoots ())
+        workshopCandidates << root + "/steamapps/workshop/content/431960";
+    config.workshopDir = firstExisting (workshopCandidates, workshopCandidates.first ());
 
     QFile file (configPath ());
     if (!file.open (QIODevice::ReadOnly)) {
@@ -40,6 +87,8 @@ Config Config::fromJson (const QJsonObject& obj) {
     config.clamp = obj.value ("clamp").toString (config.clamp);
     config.fps = obj.value ("fps").toInt (config.fps);
     config.fullscreenPause = obj.value ("fullscreenPause").toBool (config.fullscreenPause);
+    config.automute = obj.value ("automute").toBool (config.automute);
+    config.audioProcessing = obj.value ("audioProcessing").toBool (config.audioProcessing);
     config.volume = obj.value ("volume").toInt (config.volume);
     config.silent = obj.value ("silent").toBool (config.silent);
     config.disableParticles = obj.value ("disableParticles").toBool (config.disableParticles);
@@ -65,6 +114,8 @@ QJsonObject Config::toJson () const {
     obj.insert ("clamp", clamp);
     obj.insert ("fps", fps);
     obj.insert ("fullscreenPause", fullscreenPause);
+    obj.insert ("automute", automute);
+    obj.insert ("audioProcessing", audioProcessing);
     obj.insert ("volume", volume);
     obj.insert ("silent", silent);
     obj.insert ("disableParticles", disableParticles);

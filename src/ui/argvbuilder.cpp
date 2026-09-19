@@ -18,6 +18,10 @@ QStringList buildArgv (const Config& config) {
     argv << "--fps" << QString::number (config.fps);
     if (!config.fullscreenPause)
         argv << "--no-fullscreen-pause";
+    if (!config.automute)
+        argv << "--noautomute";
+    if (!config.audioProcessing)
+        argv << "--no-audio-processing";
 
     if (config.silent)
         argv << "--silent";
@@ -31,7 +35,17 @@ QStringList buildArgv (const Config& config) {
     if (config.disableParallax)
         argv << "--disable-parallax";
 
+    // only pass properties belonging to a wallpaper that is actually being
+    // launched: shared property names (schemecolor, ...) must not leak from
+    // one wallpaper into another
+    QStringList activeIds;
+    for (auto screenIt = config.screens.begin (); screenIt != config.screens.end (); ++screenIt)
+        if (!activeIds.contains (screenIt.value ()))
+            activeIds << screenIt.value ();
+
     for (auto wallIt = config.properties.begin (); wallIt != config.properties.end (); ++wallIt) {
+        if (!activeIds.contains (wallIt.key ()))
+            continue;
         const QVariantMap props = wallIt.value ().toMap ();
         for (auto propIt = props.begin (); propIt != props.end (); ++propIt)
             argv << "--set-property" << propIt.key () + "=" + propIt.value ().toString ();

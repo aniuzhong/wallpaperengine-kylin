@@ -133,6 +133,13 @@ QDBusMessage callManager (const QString& method, const QVariantList& args, Error
     return reply;
 }
 
+bool daemonReload (Error* error) {
+    Error local;
+    callManager ("Reload", {}, &local);
+    if (error) *error = local;
+    return local.kind == Error::NoError;
+}
+
 QString unitObjectPathFromId (const QString& unitId) {
     // systemd escapes every non [A-Za-z0-9] byte of the unit id as _XX
     QString escaped;
@@ -147,6 +154,11 @@ QString unitObjectPathFromId (const QString& unitId) {
 }
 
 SystemdUnit::SystemdUnit (QString unitName, QObject* parent) : QObject (parent), m_unitName (std::move (unitName)) {
+    // accept a bare name the way systemctl does: the D-Bus manager requires
+    // a full unit id with the type suffix, so "linux-wallpaperengine"
+    // becomes "linux-wallpaperengine.service"
+    if (!this->m_unitName.contains ('.'))
+        this->m_unitName += ".service";
     registerDBusTypes ();
 }
 

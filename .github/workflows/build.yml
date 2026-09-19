@@ -59,13 +59,21 @@ jobs:
             echo "version=0.1.0-dev+$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build deb
+      - name: Build deb (with unit tests inside the container)
         run: |
+          docker buildx build \
+            --target test \
+            --output type=local,dest=out-tests \
+            --build-arg DEB_VERSION="${{ steps.ver.outputs.version }}" \
+            .
           docker buildx build \
             --target export \
             --output type=local,dest=out \
             --build-arg DEB_VERSION="${{ steps.ver.outputs.version }}" \
             .
+          # the test target writes a marker file only when ctest passed
+          test -f out-tests/TESTS_PASSED || { echo "unit tests failed"; exit 1; }
+          cat out-tests/TESTS_PASSED
 
       - name: Smoke test
         run: |

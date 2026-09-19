@@ -17,6 +17,8 @@ struct Config {
     QString clamp = "border";                // --clamp
     int fps = 30;                            // --fps
     bool fullscreenPause = true;             // false emits --no-fullscreen-pause
+    bool automute = true;                    // false emits --noautomute
+    bool audioProcessing = true;             // false emits --no-audio-processing
     int volume = 15;                         // --volume
     bool silent = true;                      // --silent
     bool disableParticles = false;           // --disable-particles

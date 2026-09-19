@@ -92,13 +92,38 @@ private slots:
         QCOMPARE (argv.at (i + 1), QString ("60"));
     }
 
-    void setPropertyIsRendered () {
+    void setPropertyIsRenderedForActiveWallpaper () {
         Config c = defaultConfig ();
+        c.screens.insert ("DP-0", "843532366");
         c.properties.insert ("843532366", QVariantMap { { "schemecolor", "0.1 0.2 0.3" } });
         const QStringList argv = buildArgv (c);
         const int i = argv.indexOf ("--set-property");
         QVERIFY (i > 0);
         QCOMPARE (argv.at (i + 1), QString ("schemecolor=0.1 0.2 0.3"));
+    }
+
+    void propertiesOfInactiveWallpapersAreFiltered () {
+        Config c = defaultConfig ();
+        c.screens.insert ("DP-0", "843532366");
+        c.properties.insert ("843532366", QVariantMap { { "bloom", "1" } });
+        // schemecolor exists in many wallpapers; a value set for a wallpaper
+        // that is not being launched must not leak into this launch
+        c.properties.insert ("999999999", QVariantMap { { "schemecolor", "1 0 0" } });
+        const QStringList argv = buildArgv (c);
+        QVERIFY (argv.contains ("bloom=1"));
+        QVERIFY (!argv.contains ("schemecolor=1 0 0"));
+    }
+
+    void automuteAndAudioProcessingEmitNegatedFlags () {
+        const Config c = defaultConfig (); // both on by default: no flags
+        QVERIFY (!buildArgv (c).contains ("--noautomute"));
+        QVERIFY (!buildArgv (c).contains ("--no-audio-processing"));
+        Config disabled = defaultConfig ();
+        disabled.automute = false;
+        disabled.audioProcessing = false;
+        const QStringList argv = buildArgv (disabled);
+        QVERIFY (argv.contains ("--noautomute"));
+        QVERIFY (argv.contains ("--no-audio-processing"));
     }
 
     void commandLineQuotesArgumentsWithSpaces () {

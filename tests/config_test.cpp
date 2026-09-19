@@ -26,6 +26,8 @@ private slots:
         written.fps = 60;
         written.silent = false;
         written.volume = 42;
+        written.automute = false;
+        written.audioProcessing = false;
         written.screens.insert ("DP-0", "123456");
         QVERIFY (written.save ());
 
@@ -35,6 +37,8 @@ private slots:
         QCOMPARE (read.fps, 60);
         QCOMPARE (read.silent, false);
         QCOMPARE (read.volume, 42);
+        QCOMPARE (read.automute, false);
+        QCOMPARE (read.audioProcessing, false);
         QCOMPARE (read.screens.value ("DP-0"), QString ("123456"));
     }
 

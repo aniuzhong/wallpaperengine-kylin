@@ -3,7 +3,7 @@
 # are transient/user-scoped, so this cannot reach every account from a root
 # prerm; leftover units disappear with the session anyway.
 if [ -x /bin/systemctl ]; then
-    systemctl --user stop wallpaper-engine.service 2>/dev/null || true
-    systemctl --user stop wallpaper-engine-peony.service 2>/dev/null || true
+    systemctl --user stop linux-wallpaperengine.service 2>/dev/null || true
+    systemctl --user stop linux-wallpaperengine-peony.service 2>/dev/null || true
 fi
 exit 0

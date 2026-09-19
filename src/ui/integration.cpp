@@ -159,15 +159,15 @@ bool setup (QString* error) {
     for (const QString& lock : tmp.entryList (QStringList() << "qtsingleapp-peonyq*"))
         tmp.remove (lock);
 
-    QProcess::execute ("systemctl", { "--user", "stop", "wallpaper-engine-peony" });
-    QProcess::execute ("systemctl", { "--user", "reset-failed", "wallpaper-engine-peony" });
+    QProcess::execute ("systemctl", { "--user", "stop", "linux-wallpaperengine-peony" });
+    QProcess::execute ("systemctl", { "--user", "reset-failed", "linux-wallpaperengine-peony" });
 
     // launch through the typed systemd layer: transient unit with
     // Restart=on-failure — if peony dies, systemd restarts it WITH the
     // injection environment (structurally guaranteed self-healing)
     const QString shimPath = QCoreApplication::applicationDirPath () + "/libpeony-alpha-shim.so";
     const QString logPath = dataDir () + "/peony-shim.log";
-    SystemdLayer::SystemdUnit peonyUnit ("wallpaper-engine-peony");
+    SystemdLayer::SystemdUnit peonyUnit ("linux-wallpaperengine-peony");
     SystemdLayer::Error unitError;
     QMap<QString, QString> peonyEnv;
     peonyEnv.insert ("LD_PRELOAD", shimPath);

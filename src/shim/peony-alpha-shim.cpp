@@ -29,7 +29,9 @@
 //
 // Without PEONY_ALPHA_WALLPAPER in the environment this library is inert.
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 // Qt headers must precede X11 — X11's Bool/Status/None macros would poison
 // the Qt declarations.
 #include <QPixmap>
@@ -157,31 +159,33 @@ _ZN7QPixmapC2ERK7QStringPKc6QFlagsIN2Qt19ImageConversionFlagEE (QPixmap* pm, con
 
 static xcb_atom_t a_wm_type = 0, a_type_desktop = 0, a_type_normal = 0;
 static xcb_atom_t a_wm_state = 0, a_state_below = 0;
-static bool atoms_ready = false;
 
 static void ensure_atoms (xcb_connection_t* c) {
-    if (atoms_ready)
-        return;
-    struct {
-        const char* name;
-        xcb_atom_t* out;
-    } list[] = {
-        { "_NET_WM_WINDOW_TYPE", &a_wm_type },         { "_NET_WM_WINDOW_TYPE_DESKTOP", &a_type_desktop },
-        { "_NET_WM_WINDOW_TYPE_NORMAL", &a_type_normal }, { "_NET_WM_STATE", &a_wm_state },
-        { "_NET_WM_STATE_BELOW", &a_state_below },
-    };
-    for (auto& it : list) {
-        xcb_intern_atom_cookie_t ck = xcb_intern_atom (c, 0, strlen (it.name), it.name);
-        xcb_intern_atom_reply_t* r = xcb_intern_atom_reply (c, ck, nullptr);
-        if (r) {
-            *it.out = r->atom;
-            free (r);
+    // C++11 thread-safe static initialization: the interning runs exactly
+    // once even if several threads race into the property hooks
+    static const bool atoms_ready = [c] {
+        struct {
+            const char* name;
+            xcb_atom_t* out;
+        } list[] = {
+            { "_NET_WM_WINDOW_TYPE", &a_wm_type },         { "_NET_WM_WINDOW_TYPE_DESKTOP", &a_type_desktop },
+            { "_NET_WM_WINDOW_TYPE_NORMAL", &a_type_normal }, { "_NET_WM_STATE", &a_wm_state },
+            { "_NET_WM_STATE_BELOW", &a_state_below },
+        };
+        for (auto& it : list) {
+            xcb_intern_atom_cookie_t ck = xcb_intern_atom (c, 0, strlen (it.name), it.name);
+            xcb_intern_atom_reply_t* r = xcb_intern_atom_reply (c, ck, nullptr);
+            if (r) {
+                *it.out = r->atom;
+                free (r);
+            }
         }
-    }
-    atoms_ready = true;
-    shim_log ("[shim] xcb atoms ready (type=%lu desktop=%lu normal=%lu state=%lu below=%lu)\n",
-              (unsigned long) a_wm_type, (unsigned long) a_type_desktop, (unsigned long) a_type_normal,
-              (unsigned long) a_wm_state, (unsigned long) a_state_below);
+        shim_log ("[shim] xcb atoms ready (type=%lu desktop=%lu normal=%lu state=%lu below=%lu)\n",
+                  (unsigned long) a_wm_type, (unsigned long) a_type_desktop, (unsigned long) a_type_normal,
+                  (unsigned long) a_wm_state, (unsigned long) a_state_below);
+        return true;
+    } ();
+    (void) atoms_ready;
 }
 
 using xcb_ccp_t = xcb_void_cookie_t (*) (xcb_connection_t*, uint8_t, xcb_window_t, xcb_atom_t, xcb_atom_t, uint8_t,
@@ -244,14 +248,18 @@ XChangeProperty (Display* display, Window w, Atom property, Atom type, int forma
 
     if (shim_enabled () && format == 32 && nelements > 0 && nelements <= 32) {
         static Atom x_wm_type = 0, x_type_desktop = 0, x_type_normal = 0, x_wm_state = 0, x_state_below = 0;
-        if (!x_wm_type) {
+        // C++11 thread-safe static initialization (same rationale as the xcb
+        // path): the first caller's display interns the atoms exactly once
+        static const bool xlib_atoms_ready = [&] {
             x_wm_type = xlib_atom (display, "_NET_WM_WINDOW_TYPE");
             x_type_desktop = xlib_atom (display, "_NET_WM_WINDOW_TYPE_DESKTOP");
             x_type_normal = xlib_atom (display, "_NET_WM_WINDOW_TYPE_NORMAL");
             x_wm_state = xlib_atom (display, "_NET_WM_STATE");
             x_state_below = xlib_atom (display, "_NET_WM_STATE_BELOW");
             shim_log ("[shim] xlib atoms ready\n");
-        }
+            return true;
+        } ();
+        (void) xlib_atoms_ready;
 
         if (type == XA_ATOM && property == x_wm_type) {
             const auto* in = reinterpret_cast<const unsigned long*> (data);
