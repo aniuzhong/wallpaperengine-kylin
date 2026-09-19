@@ -1,15 +1,18 @@
 #pragma once
 
+#include <QImage>
 #include <QList>
 #include <QString>
 
 struct WallpaperEntry {
-    QString id;           // workshop directory name, used as --bg value
-    QString title;        // project.json title
-    QString type;         // project.json type (scene/video/web)
-    QString previewPath;  // preview.jpg path, empty when absent
+    QString id;     // workshop directory name, used as --bg value
+    QString title;  // project.json title
+    QString type;   // project.json type (scene/video/web)
+    QString size;   // humanized on-disk size of the wallpaper directory
+    QImage preview; // preview decoded at display resolution (16:9); null when absent
 };
 
 // Scan a Wallpaper Engine workshop content directory. Directories without a
-// project.json are skipped; entries are sorted by title.
+// project.json are skipped; entries are sorted by title. Previews are
+// decoded here — the ui consumes images, never paths or directory layout.
 QList<WallpaperEntry> scanLibrary (const QString& workshopDir);

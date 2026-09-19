@@ -165,13 +165,6 @@ bool stopUnit () {
     return tolerated (error);
 }
 
-bool resetFailedUnit () {
-    SystemdLayer::SystemdUnit unit (unitNameFromEnv ());
-    SystemdLayer::Error error;
-    unit.resetFailed (&error);
-    return tolerated (error);
-}
-
 QString unitState () {
     SystemdLayer::SystemdUnit unit (unitNameFromEnv ());
     return unit.activeState ();

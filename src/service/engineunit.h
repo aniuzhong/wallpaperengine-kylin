@@ -21,7 +21,6 @@ bool daemonReload ();
 bool startUnit ();
 bool restartUnit ();
 bool stopUnit ();
-bool resetFailedUnit ();
 QString unitState ();                           // active/inactive/failed/unknown
 
 } // namespace EngineUnit
