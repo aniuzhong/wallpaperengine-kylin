@@ -127,7 +127,7 @@ private slots:
     void transient_environmentIsInjected () {
         QMap<QString, QString> env;
         env.insert ("LWE_TEST_MARKER", "present");
-        QVERIFY (m_unit->startTransient (QStringList { QStringLiteral ("/bin/sleep"), QStringLiteral ("3600") }, env));
+        QVERIFY (m_unit->startTransient (QStringList { QStringLiteral ("/bin/sleep"), QStringLiteral ("3600") }, env, {}));
 
         QTRY_COMPARE (m_unit->activeState (), QString ("active"));
         // ActiveState flips at fork; the unit Environment lands on the
@@ -151,8 +151,6 @@ private slots:
                     content += QString::fromLatin1 (buf, static_cast<int> (n));
                 ::close (fd);
                 envApplied = content.contains ("LWE_TEST_MARKER");
-                qWarning () << "DIAG poll" << waited << "pid" << pid << "envlen" << content.size ()
-                            << "applied" << envApplied;
             }
             if (!envApplied)
                 QThread::msleep (200);
@@ -189,7 +187,7 @@ private slots:
         // LD_PRELOAD chain survives crashes by construction)
         QMap<QString, QString> env;
         env.insert ("LWE_TEST_MARKER", "present");
-        QVERIFY (m_unit->startTransient (QStringList { QStringLiteral ("/bin/sleep"), QStringLiteral ("3600") }, env));
+        QVERIFY (m_unit->startTransient (QStringList { QStringLiteral ("/bin/sleep"), QStringLiteral ("3600") }, env, {}));
         QTRY_COMPARE (m_unit->activeState (), QString ("active"));
         const qint64 firstPid = mainPid ();
         QVERIFY (firstPid > 0);
@@ -206,9 +204,25 @@ private slots:
         }
         QVERIFY2 (restarted, "transient unit did not auto-restart after SIGKILL");
 
+        // /proc reads truncate via QFile::readAll — drain with POSIX reads
         QFile environ (QString ("/proc/%1/environ").arg (newPid));
         QVERIFY (environ.open (QIODevice::ReadOnly));
-        QVERIFY (QString::fromUtf8 (environ.readAll ()).contains ("LWE_TEST_MARKER"));
+        QString envContent;
+        {
+            char buf[8192];
+            ssize_t n;
+            while ((n = ::read (environ.handle (), buf, sizeof buf)) > 0)
+                envContent += QString::fromLatin1 (buf, static_cast<int> (n));
+        }
+        if (!envContent.contains ("LWE_TEST_MARKER")) {
+            QProcess ps;
+            ps.start ("ps", { "-o", "args=", "-p", QString::number (newPid) });
+            ps.waitForFinished (2000);
+            qWarning () << "DIAG restarted pid" << newPid << "args:"
+                        << QString::fromUtf8 (ps.readAllStandardOutput ())
+                        << "environ:" << envContent.left (200);
+        }
+        QVERIFY (envContent.contains ("LWE_TEST_MARKER"));
 
         QVERIFY (m_unit->stop ());
     }
@@ -219,7 +233,7 @@ private slots:
 
     void transient_rejectsEmptyArgv () {
         Error error;
-        QVERIFY (!m_unit->startTransient ({}, {}, &error));
+        QVERIFY (!m_unit->startTransient ({}, {}, {}, &error));
         QCOMPARE (error.kind, Error::InvalidInput);
     }
 

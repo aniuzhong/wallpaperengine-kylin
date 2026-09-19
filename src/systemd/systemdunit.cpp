@@ -23,7 +23,6 @@ constexpr const char* kManagerPath = "/org/freedesktop/systemd1";
 constexpr const char* kManagerIface = "org.freedesktop.systemd1.Manager";
 constexpr const char* kUnitIface = "org.freedesktop.systemd1.Unit";
 constexpr const char* kPropsIface = "org.freedesktop.DBus.Properties";
-constexpr const char* kUnitName = "lwe-engine";
 
 // property entry: (key, variant) — signature (sv)
 struct DbusProperty {
@@ -217,6 +216,10 @@ bool SystemdUnit::startTransient (const QStringList& execArgs, const QMap<QStrin
 
     const ExecCommand command = toExecCommand (finalArgs);
 
+    // a stale failed unit with the same name blocks re-creation ("already
+    // exists") — clear it first; a not-loaded unit is a harmless no-op
+    callManager ("ResetFailedUnit", { m_unitName }, nullptr);
+
     DbusPropertyList properties;
     properties.append ({ "Description", QDBusVariant ("wallpaper transient unit") });
     properties.append ({ "Type", QDBusVariant ("simple") });
@@ -261,10 +264,15 @@ bool SystemdUnit::restart (Error* error) {
 }
 
 bool SystemdUnit::resetFailed (Error* error) {
+    // advisory operation: a unit that is not loaded has nothing to reset —
+    // systemd errors on it, but callers mean "make sure it can start", so
+    // that outcome is success
     Error local;
     const QDBusMessage reply = callManager ("ResetFailedUnit", { m_unitName }, &local);
+    if (local.kind != Error::NoError && local.message.contains ("not loaded"))
+        local = {};
     if (error) *error = local;
-    return reply.type () == QDBusMessage::ReplyMessage;
+    return local.kind == Error::NoError;
 }
 
 QString SystemdUnit::activeState (Error* error) const {

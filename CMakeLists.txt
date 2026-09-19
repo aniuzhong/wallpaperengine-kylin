@@ -14,6 +14,7 @@ pkg_check_modules(XCB REQUIRED xcb)
 # UI / CLI control surface for the integration(scaffold: config + selftest)
 add_executable(wallpaper-engine
     src/ui/main.cpp
+    src/ui/cli.cpp
     src/ui/config.cpp
     src/ui/argvbuilder.cpp
     src/ui/library.cpp
