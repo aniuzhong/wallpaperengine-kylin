@@ -62,7 +62,7 @@ jobs:
       - name: Build deb (with unit tests inside the container)
         run: |
           docker buildx build \
-            --target test \
+            --target test-result \
             --output type=local,dest=out-tests \
             --build-arg DEB_VERSION="${{ steps.ver.outputs.version }}" \
             .

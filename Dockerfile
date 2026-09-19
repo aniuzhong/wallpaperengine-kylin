@@ -124,6 +124,12 @@ RUN cmake -S /int -B /build/test -DCMAKE_BUILD_TYPE=Release \
  && QT_QPA_PLATFORM=offscreen ctest --output-on-failure -E "shim_hook_test" \
  && echo "all tests passed" > /TESTS_PASSED
 
+# The workflow exports this stage, not `test`: test inherits the whole
+# builder filesystem (multi-GB build tree), while only the marker file is
+# ever needed — exporting `test` copied 1GB+ of small files per run.
+FROM scratch AS test-result
+COPY --from=test /TESTS_PASSED /TESTS_PASSED
+
 # -------------------------------------------------------------------- export
 # CI exports this stage: `--output type=local,dest=out` yields out/pkg.deb
 FROM scratch AS export
