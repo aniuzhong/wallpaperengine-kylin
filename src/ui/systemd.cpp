@@ -9,7 +9,11 @@
 
 namespace {
 
-constexpr const char* kUnitName = "lwe-engine";
+// overridable for tests (WALLPAPER_ENGINE_UNIT=<name>)
+QString unitNameFromEnv () {
+    static const QString name = qEnvironmentVariable ("WALLPAPER_ENGINE_UNIT", "wallpaper-engine");
+    return name;
+}
 
 int runSystemctl (const QStringList& args) {
     QProcess process;
@@ -23,9 +27,14 @@ int runSystemctl (const QStringList& args) {
 
 namespace Systemd {
 
+QString unitName () { return unitNameFromEnv (); }
+
 QString unitPath () {
-    const QString base = QStandardPaths::writableLocation (QStandardPaths::GenericConfigLocation);
-    return base + "/systemd/user/" + kUnitName + ".service";
+    // deliberately $HOME-based (not XStandardPaths): the USER systemd manager
+    // must see this exact file, so XDG overrides from test shells must not
+    // relocate it. Tests isolate themselves by unit name instead.
+    const QString home = qEnvironmentVariable ("HOME");
+    return home + "/.config/systemd/user/" + unitNameFromEnv () + ".service";
 }
 
 QString unitFileContent (const Config& config) {
@@ -68,13 +77,17 @@ bool writeUnitFile (const Config& config) {
 
 bool daemonReload () { return runSystemctl ({ "daemon-reload" }) == 0; }
 
-bool restartUnit () { return runSystemctl ({ "restart", kUnitName }) == 0; }
+bool startUnit () { return runSystemctl ({ "start", unitNameFromEnv () }) == 0; }
 
-bool stopUnit () { return runSystemctl ({ "stop", kUnitName }) == 0; }
+bool restartUnit () { return runSystemctl ({ "restart", unitNameFromEnv () }) == 0; }
+
+bool stopUnit () { return runSystemctl ({ "stop", unitNameFromEnv () }) == 0; }
+
+bool resetFailedUnit () { return runSystemctl ({ "reset-failed", unitName () }) == 0; }
 
 QString unitState () {
     QProcess process;
-    process.start ("systemctl", QStringList() << "--user" << "is-active" << kUnitName);
+    process.start ("systemctl", QStringList() << "--user" << "is-active" << unitNameFromEnv ());
     if (!process.waitForStarted (3000) || !process.waitForFinished (10000))
         return "unknown";
     return QString::fromUtf8 (process.readAllStandardOutput ()).trimmed ();

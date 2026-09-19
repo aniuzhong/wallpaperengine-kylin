@@ -31,8 +31,10 @@ QStringList buildArgv (const Config& config) {
     if (config.disableParallax)
         argv << "--disable-parallax";
 
-    for (auto it = config.properties.begin (); it != config.properties.end (); ++it) {
-        argv << "--set-property" << it.key () + "=" + it.value ().toString ();
+    for (auto wallIt = config.properties.begin (); wallIt != config.properties.end (); ++wallIt) {
+        const QVariantMap props = wallIt.value ().toMap ();
+        for (auto propIt = props.begin (); propIt != props.end (); ++propIt)
+            argv << "--set-property" << propIt.key () + "=" + propIt.value ().toString ();
     }
 
     return argv;

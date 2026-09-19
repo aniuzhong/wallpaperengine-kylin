@@ -1,7 +1,8 @@
 // wallpaper-engine: UI and CLI control surface for the Kylin
 // linux-wallpaperengine integration. The UI is the editor of the
-// lwe-engine systemd user unit; the wallpaper itself runs under systemd
+// wallpaper-engine systemd user unit; the wallpaper itself runs under systemd
 // and survives a UI exit.
+#include "cli.h"
 #include "config.h"
 #include "mainwindow.h"
 
@@ -13,6 +14,10 @@ int main (int argc, char** argv) {
     QApplication::setApplicationName ("wallpaper-engine");
 
     const QStringList args = QCoreApplication::arguments ();
+
+    // headless control plane: `wallpaper-engine <command>` never opens a window
+    if (args.size () > 1 && !args.at (1).startsWith ("-"))
+        return runCli (args.mid (1));
 
     if (args.contains ("--selftest")) {
         // load the config (creating defaults on first run) and report

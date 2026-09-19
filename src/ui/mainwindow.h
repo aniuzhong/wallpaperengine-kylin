@@ -10,7 +10,7 @@
 #include <QTimer>
 
 // Minimal control surface: thumbnail grid of the workshop library,
-// double-click applies the selected wallpaper by restarting the lwe-engine
+// double-click applies the selected wallpaper by restarting the wallpaper-engine
 // systemd user unit. The UI is only the editor of the unit — closing it
 // never affects a running wallpaper.
 class MainWindow final : public QMainWindow {
