@@ -1,0 +1,9 @@
+#!/bin/sh
+# The wallpaper and the peony injection run per-user (systemd user units +
+# LD_PRELOAD via autostart), so no system-wide activation is required here.
+# Each user configures their session once with:
+#   wallpaper-engine setup-integration
+if [ "$1" = configure ] && [ -x /usr/bin/wallpaper-engine ]; then
+    echo "linux-wallpaperengine-kylin: run 'wallpaper-engine setup-integration' once per user session."
+fi
+exit 0
