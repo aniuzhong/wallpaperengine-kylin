@@ -1,5 +1,6 @@
 #include "detailpanel.h"
 
+#include <QMovie>
 #include <QPainter>
 #include <QVBoxLayout>
 
@@ -30,10 +31,37 @@ DetailPanel::DetailPanel (QWidget* parent) : QWidget (parent) {
     clear ();
 }
 
+void DetailPanel::stopMovie () {
+    if (m_movie != nullptr) {
+        m_movie->stop ();
+        delete m_movie;
+        m_movie = nullptr;
+    }
+    delete m_buffer;
+    m_buffer = nullptr;
+    m_animData.clear ();
+}
+
 void DetailPanel::showEntry (const QString& title, const QString& type, const QString& size,
-                             const QImage& preview) {
+                             const QImage& preview, const QByteArray& previewAnim) {
     // the service hands over a display-resolution image; the panel only
-    // renders it (placeholder when the wallpaper has no preview)
+    // renders it (placeholder when the wallpaper has no preview). Animated
+    // previews play the bytes the service handed over.
+
+    stopMovie ();
+    if (!previewAnim.isEmpty ()) {
+        m_animData = previewAnim;
+        m_buffer = new QBuffer (&m_animData, this);
+        m_buffer->open (QIODevice::ReadOnly);
+        m_movie = new QMovie (m_buffer, QByteArray (), this);
+        m_movie->setScaledSize (QSize (kPreviewW, kPreviewH));
+        connect (m_movie, &QMovie::frameChanged, this,
+                 [this] { m_preview->setPixmap (m_movie->currentPixmap ()); });
+        m_movie->start ();
+        m_title->setText (title);
+        m_meta->setText (type + " · " + size);
+        return;
+    }
 
     if (preview.isNull ()) {
         const QPalette& palette = this->palette ();
@@ -55,6 +83,7 @@ void DetailPanel::showEntry (const QString& title, const QString& type, const QS
 }
 
 void DetailPanel::clear () {
+    stopMovie ();
     m_preview->setPixmap (QPixmap ());
     m_title->setText (QString ());
     m_meta->setText (QString ());

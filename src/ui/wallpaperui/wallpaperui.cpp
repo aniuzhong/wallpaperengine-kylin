@@ -122,7 +122,7 @@ void WallpaperUI::showDetail (QListWidgetItem* current) {
     const QString title = current->data (Qt::DisplayRole).toString ();
     for (const WallpaperEntry& entry : m_entries) {
         if (entry.title == title) {
-            m_detail->showEntry (entry.title, entry.type, entry.size, entry.preview);
+            m_detail->showEntry (entry.title, entry.type, entry.size, entry.preview, entry.previewAnim);
             return;
         }
     }

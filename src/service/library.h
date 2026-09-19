@@ -10,6 +10,11 @@ struct WallpaperEntry {
     QString type;   // project.json type (scene/video/web)
     QString size;   // humanized on-disk size of the wallpaper directory
     QImage preview; // preview decoded at display resolution (16:9); null when absent
+
+    // animated previews (multi-frame gif etc.): raw preview bytes for the
+    // detail panel's player; empty for static previews
+    QByteArray previewAnim;
+    bool previewAnimated = false;
 };
 
 // Scan a Wallpaper Engine workshop content directory. Directories without a

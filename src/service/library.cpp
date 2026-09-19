@@ -65,7 +65,8 @@ QList<WallpaperEntry> scanLibrary (const QString& workshopDir) {
         // decode at display size and center-crop to exactly 16:9, so grid
         // tile and detail panel distort nothing regardless of the source
         // aspect ratio
-        QImageReader reader (dirPath + "/" + previewName);
+        const QString previewPath = dirPath + "/" + previewName;
+        QImageReader reader (previewPath);
         const QSize target (kPreviewW, kPreviewH);
         reader.setScaledSize (target.scaled (target.width (), target.height (), Qt::KeepAspectRatioByExpanding));
         QImage preview = reader.read ();
@@ -74,6 +75,15 @@ QList<WallpaperEntry> scanLibrary (const QString& workshopDir) {
                                     (preview.height () - target.height ()) / 2,
                                     target.width (), target.height ());
         entry.preview = preview;
+
+        // multi-frame previews travel to the ui as raw bytes for playback
+        if (reader.imageCount () > 1) {
+            QFile anim (previewPath);
+            if (anim.open (QIODevice::ReadOnly)) {
+                entry.previewAnim = anim.readAll ();
+                entry.previewAnimated = true;
+            }
+        }
 
         entries.append (entry);
     }
