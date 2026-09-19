@@ -12,6 +12,7 @@
 // the ui knows no paths, performs no file access and holds no directory
 // knowledge; it only consumes the WallpaperEntry images and strings.
 class WallpaperUI final : public QMainWindow {
+    Q_OBJECT
 public:
     explicit WallpaperUI (QWidget* parent = nullptr);
 

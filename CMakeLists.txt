@@ -37,6 +37,7 @@ add_executable(wallpaper-engine
     src/ui/wallpaperui/wallpaperui.cpp
     src/ui/wallpaperui/detailpanel.cpp
     src/ui/wallpaperui/griddelegate.cpp
+    src/ui/wallpaperui/placeholder.cpp
 )
 target_link_libraries(wallpaper-engine PRIVATE Qt5::Core Qt5::Widgets wallpaper_service)
 target_include_directories(wallpaper-engine PRIVATE src/ui)

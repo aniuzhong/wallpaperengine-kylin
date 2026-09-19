@@ -11,9 +11,6 @@
 #include <algorithm>
 
 namespace {
-constexpr int kPreviewW = 360;
-constexpr int kPreviewH = 202; // 16:9 — one image serves grid tile and detail panel
-
 QString humanizeSize (qint64 bytes) {
     if (bytes >= (1LL << 30))
         return QString::number (bytes / double (1LL << 30), 'f', 1) + " GB";

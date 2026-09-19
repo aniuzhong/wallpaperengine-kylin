@@ -4,6 +4,11 @@
 #include <QList>
 #include <QString>
 
+// Display size of the preview image decoded for each entry: 16:9, one image
+// serves the grid tile (downscaled) and the detail panel (native size).
+constexpr int kPreviewW = 360;
+constexpr int kPreviewH = kPreviewW * 9 / 16;
+
 struct WallpaperEntry {
     QString id;     // workshop directory name, used as --bg value
     QString title;  // project.json title

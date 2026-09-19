@@ -70,7 +70,7 @@ void WallpaperUI::buildBody () {
     m_grid->setResizeMode (QListWidget::Adjust);
     m_grid->setMovement (QListWidget::Static);
     m_grid->setUniformItemSizes (true);
-    m_grid->setGridSize (QSize (204, 146));
+    m_grid->setGridSize (GridDelegate::tileSize ());
     m_grid->setItemDelegate (new GridDelegate (m_grid));
     m_grid->setVerticalScrollMode (QListWidget::ScrollPerPixel);
     splitter->addWidget (m_grid);
@@ -118,9 +118,13 @@ QList<WallpaperEntry> WallpaperUI::filtered () const {
             continue;
         result.append (entry);
     }
+    // both directions collate case-insensitively: the two orders must be
+    // exact inverses of each other
     if (m_sort->currentIndex () == 1)
         std::sort (result.begin (), result.end (),
-                   [] (const WallpaperEntry& a, const WallpaperEntry& b) { return a.title > b.title; });
+                   [] (const WallpaperEntry& a, const WallpaperEntry& b) {
+                       return a.title.compare (b.title, Qt::CaseInsensitive) > 0;
+                   });
     else
         std::sort (result.begin (), result.end (),
                    [] (const WallpaperEntry& a, const WallpaperEntry& b) {
@@ -149,5 +153,5 @@ void WallpaperUI::showDetail (QListWidgetItem* current) {
     if (current == nullptr)
         return;
     if (const WallpaperEntry* entry = findEntry (current->data (kIdRole).toString ()))
-        m_detail->showEntry (entry->title, entry->type, entry->size, entry->preview, entry->previewAnim);
+        m_detail->showEntry (*entry);
 }

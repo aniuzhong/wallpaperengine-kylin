@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QSize>
 #include <QStyledItemDelegate>
 
 // Paints one library tile the way the original does: thumbnail with the
@@ -8,8 +9,13 @@
 // Theme; item roles: DisplayRole = title, DecorationRole = thumbnail,
 // UserRole = type (placeholder badge text).
 class GridDelegate final : public QStyledItemDelegate {
+    Q_OBJECT
 public:
     explicit GridDelegate (QObject* parent = nullptr);
+
+    // the full tile geometry, margins included — the grid's gridSize must
+    // come from here, never from a copy of these numbers
+    static QSize tileSize ();
 
     void paint (QPainter* painter, const QStyleOptionViewItem& option,
                 const QModelIndex& index) const override;

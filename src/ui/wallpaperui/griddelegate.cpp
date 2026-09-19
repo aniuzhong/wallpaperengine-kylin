@@ -1,4 +1,5 @@
 #include "griddelegate.h"
+#include "placeholder.h"
 
 #include <QIcon>
 #include <QPainter>
@@ -12,8 +13,12 @@ constexpr int kTitleBarH = 26;
 
 GridDelegate::GridDelegate (QObject* parent) : QStyledItemDelegate (parent) {}
 
-QSize GridDelegate::sizeHint (const QStyleOptionViewItem&, const QModelIndex&) const {
+QSize GridDelegate::tileSize () {
     return QSize (kThumbW + kTileMargin * 2, kThumbH + kTitleBarH + kTileMargin * 2);
+}
+
+QSize GridDelegate::sizeHint (const QStyleOptionViewItem&, const QModelIndex&) const {
+    return tileSize ();
 }
 
 void GridDelegate::paint (QPainter* painter, const QStyleOptionViewItem& option,
@@ -30,16 +35,10 @@ void GridDelegate::paint (QPainter* painter, const QStyleOptionViewItem& option,
     const QPalette& palette = option.palette;
 
     // thumbnail or palette-gradient placeholder with a type badge
-    if (icon.isNull ()) {
-        QLinearGradient gradient (tile.topLeft (), tile.bottomRight ());
-        gradient.setColorAt (0, palette.color (QPalette::Mid));
-        gradient.setColorAt (1, palette.color (QPalette::Window));
-        painter->fillRect (tile, gradient);
-        painter->setPen (palette.color (QPalette::PlaceholderText));
-        painter->drawText (tile, Qt::AlignCenter, type.toUpper ());
-    } else {
+    if (icon.isNull ())
+        paintPlaceholder (painter, tile, palette, type);
+    else
         icon.paint (painter, tile);
-    }
 
     // translucent black title bar stays readable over any thumbnail in any
     // theme — this is readability, not theme
