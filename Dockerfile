@@ -11,13 +11,21 @@
 # CI produces the deb:
 #   docker buildx build --target export --output type=local,dest=out .
 
-ARG BASE=ghcr.io/aniuzhong/kylin:10.1-sp1-hwe-2303
+ARG KYLIN_BASE=ghcr.io/aniuzhong/kylin:10.1-sp1-hwe-2303
+# The dev image adds the toolchain on top of the pristine rootfs; both CI
+# and local docker builds consume it, so toolchain changes are one image
+# push (rebuild command on the deps stage below).
+ARG BASE=ghcr.io/aniuzhong/kylin-dev:10.1
 
-# Upstream provenance lives in the seed: third_party/linux-wallpaperengine
-# is upstream Almamu/linux-wallpaperengine at b016d7d with patches/ applied.
+# Upstream provenance: cmake fetches the engine at LWPE_REF (CMakeLists)
+# and applies patches/ — a patch that no longer applies fails the build.
 
-# --------------------------------------------------------------------- deps
-FROM ${BASE} AS deps
+# ------------------------------------------------------- dev image (deps)
+# Definition of the dev image (ARG BASE above). Rebuild and push it only
+# when the toolchain changes:
+#   docker build --target deps -t ghcr.io/aniuzhong/kylin-dev:10.1 .
+#   docker push ghcr.io/aniuzhong/kylin-dev:10.1
+FROM ${KYLIN_BASE} AS deps
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -87,10 +95,16 @@ FROM builder AS deb
 ARG DEB_VERSION=0.1.0
 
 COPY packaging/deb /tmp/deb-control
-RUN mkdir -p /deb/DEBIAN \
+RUN mkdir -p /deb/DEBIAN /deb/usr/share/doc/linux-wallpaperengine-kylin \
  && cp /tmp/deb-control/control /deb/DEBIAN/control \
  && sed -i "s/@VERSION@/${DEB_VERSION}/" /deb/DEBIAN/control \
- && [ ! -f /tmp/deb-control/postinst ] || { cp /tmp/deb-control/postinst /deb/DEBIAN/postinst; chmod 755 /deb/DEBIAN/postinst; } \
+ && for s in postinst prerm postrm preinst; do \
+        if [ -f "/tmp/deb-control/$s" ]; then \
+            cp "/tmp/deb-control/$s" /deb/DEBIAN/$s; chmod 755 /deb/DEBIAN/$s; \
+        fi; \
+    done \
+ && cp /tmp/deb-control/copyright /deb/usr/share/doc/linux-wallpaperengine-kylin/copyright \
+ && echo "Installed-Size: $(du -sk --apparent-size /deb | cut -f1)" >> /deb/DEBIAN/control \
  && dpkg-deb --build --root-owner-group /deb /pkg.deb
 
 # ---------------------------------------------------------------------- test

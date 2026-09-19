@@ -1,9 +1,18 @@
 #!/bin/sh
-# Best-effort stop of the user units for the common single-user case. Units
-# are transient/user-scoped, so this cannot reach every account from a root
-# prerm; leftover units disappear with the session anyway.
+# Best-effort stop of the user units. prerm runs as root, so a plain
+# `systemctl --user` would target root's own (usually absent) manager —
+# reach every running graphical session through its runtime bus instead.
+# Units are transient/user-scoped: anything unreachable here disappears
+# with the session anyway.
 if [ -x /bin/systemctl ]; then
-    systemctl --user stop linux-wallpaperengine.service 2>/dev/null || true
-    systemctl --user stop linux-wallpaperengine-peony.service 2>/dev/null || true
+    for runtime in /run/user/[0-9]*; do
+        [ -d "$runtime" ] || continue
+        XDG_RUNTIME_DIR="$runtime" \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
+            systemctl --user stop linux-wallpaperengine.service 2>/dev/null || true
+        XDG_RUNTIME_DIR="$runtime" \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
+            systemctl --user stop linux-wallpaperengine-peony.service 2>/dev/null || true
+    done
 fi
 exit 0
