@@ -21,6 +21,7 @@ private:
     QList<WallpaperEntry> filtered () const;
     void rebuildGrid ();
     void showDetail (QListWidgetItem* current);
+    void applyEntry (const WallpaperEntry& entry);
 
     QList<WallpaperEntry> m_entries;
 

@@ -3,13 +3,26 @@
 #include "griddelegate.h"
 
 #include "../service/config.h"
+#include "../service/engineunit.h"
 
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QScreen>
 #include <QSplitter>
 #include <QVBoxLayout>
 #include <algorithm>
+
+namespace {
+// mirrors the cli switch command: a configured screen keeps its name, an
+// unconfigured desktop falls back to the primary screen
+QString primaryScreenName () {
+    if (!qobject_cast<QGuiApplication*> (QCoreApplication::instance ()))
+        return QString ("DP-0");
+    return QGuiApplication::primaryScreen () ? QGuiApplication::primaryScreen ()->name () : QString ("DP-0");
+}
+} // namespace
 
 WallpaperUI::WallpaperUI (QWidget* parent) : QMainWindow (parent) {
     setWindowTitle ("Wallpaper UI 0.1.0 - Kylin Edition");
@@ -77,6 +90,28 @@ void WallpaperUI::buildBody () {
     connect (m_grid, &QListWidget::itemSelectionChanged, this, [this] {
         showDetail (m_grid->currentItem ());
     });
+    // single click applies: the cli switch command runs through the same
+    // service chain (config -> unit file -> daemon-reload -> restart)
+    connect (m_grid, &QListWidget::itemClicked, this, [this] (QListWidgetItem* item) {
+        if (item == nullptr)
+            return;
+        const QString title = item->data (Qt::DisplayRole).toString ();
+        for (const WallpaperEntry& entry : m_entries)
+            if (entry.title == title)
+                applyEntry (entry);
+    });
+}
+
+void WallpaperUI::applyEntry (const WallpaperEntry& entry) {
+    Config config = Config::load ();
+    if (config.screens.isEmpty ())
+        config.screens.insert (primaryScreenName (), entry.id);
+    else
+        config.screens.begin ().value () = entry.id; // single-screen v1
+
+    if (!config.save () || !EngineUnit::writeUnitFile (config) || !EngineUnit::daemonReload ()
+        || !EngineUnit::restartUnit ())
+        return; // the wallpaper keeps running; failure surfaces on the next manual start
 }
 
 QList<WallpaperEntry> WallpaperUI::filtered () const {
