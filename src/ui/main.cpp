@@ -19,9 +19,8 @@ int main (int argc, char** argv) {
     for (int i = 0; i < argc; i++)
         args << QString::fromLocal8Bit (argv[i]);
 
-    const bool headless =
-        (args.size () > 1 && !args.at (1).startsWith ("-")) // control-plane command
-        || args.contains ("--selftest");
+    const bool controlCommand = args.size () > 1 && !args.at (1).startsWith ("-");
+    const bool headless = controlCommand || args.contains ("--selftest");
 
     // headless control plane: `wallpaper-engine <command>` never opens a
     // window and must work with no display at all (SSH, CI, pre-login), so
@@ -32,7 +31,7 @@ int main (int argc, char** argv) {
                  : std::unique_ptr<QCoreApplication> (new QApplication (argc, argv));
     QApplication::setApplicationName ("wallpaper-engine");
 
-    if (args.size () > 1 && !args.at (1).startsWith ("-"))
+    if (controlCommand)
         return runCli (args.mid (1));
 
     if (args.contains ("--selftest")) {

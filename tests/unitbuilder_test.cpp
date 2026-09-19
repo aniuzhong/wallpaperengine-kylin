@@ -1,5 +1,6 @@
-// Pure-logic tests for the systemd layer: unit file text and transient
-// property decomposition. No bus required — these must pass everywhere.
+// Pure-logic tests for the systemd layer: ExecStart escaping/parsing and
+// transient property decomposition. No bus required — these must pass
+// everywhere.
 #include "../src/service/systemd/unitbuilder.h"
 
 #include <QtTest>
@@ -10,36 +11,6 @@ class UnitBuilderTest : public QObject {
     Q_OBJECT
 
 private slots:
-    void unitFile_minimalConfiguration () {
-        UnitDefinition def;
-        def.description = "test unit";
-        def.execArgs = QStringList { QStringLiteral ("/usr/bin/sleep"), QStringLiteral ("3600") };
-        def.restartOnFailure = false;
-        def.partOf = ""; // no PartOf line when empty
-
-        const QString text = buildUnitFile (def);
-
-        QVERIFY (text.contains ("[Unit]\nDescription=test unit\n"));
-        QVERIFY (!text.contains ("PartOf="));
-        QVERIFY (text.contains ("[Service]\nType=simple\n"));
-        QVERIFY (text.contains ("ExecStart=/usr/bin/sleep 3600\n"));
-        QVERIFY (!text.contains ("Environment="));
-        QVERIFY (!text.contains ("Restart="));
-        QVERIFY (text.endsWith ("\n[Install]\nWantedBy=graphical-session.target\n"));
-    }
-
-    void unitFile_environmentAndRestart () {
-        UnitDefinition def;
-        def.description = "x";
-        def.execArgs = QStringList { QStringLiteral ("/bin/a") };
-        def.environment = { { "FOO", "bar" }, { "B", "2" } };
-        def.restartOnFailure = true;
-
-        const QString text = buildUnitFile (def);
-        QVERIFY (text.contains ("Environment="));
-        QVERIFY (text.contains ("Restart=on-failure\nRestartSec=3\n"));
-    }
-
     void escapeExecArg_plainArgStaysUntouched () {
         QCOMPARE (escapeExecArg (QString ("/usr/bin/sleep")), QString ("/usr/bin/sleep"));
         QCOMPARE (escapeExecArg (QString ("3600")), QString ("3600"));
@@ -79,21 +50,36 @@ private slots:
         QVERIFY (command.args.isEmpty ());
     }
 
-    void environmentAssignments_joinsKeyAndValue () {
-        QMap<QString, QString> env;
-        env.insert ("A", "1");
-        env.insert ("LONG", "x y");
-        const QStringList assignments = environmentAssignments (env);
-        QCOMPARE (assignments.size (), 2);
-        QVERIFY (assignments.contains ("A=1"));
-        QVERIFY (assignments.contains ("LONG=x y"));
+    void parseExecArgs_plainLine () {
+        // no braced init with commas inside the macro: the preprocessor
+        // would split it as extra arguments
+        const QStringList expected { QStringLiteral ("/bin/sleep"), QStringLiteral ("3600") };
+        QCOMPARE (parseExecArgs (QString ("/bin/sleep 3600")), expected);
     }
 
-    void buildUnitFile_isDeterministic () {
-        UnitDefinition def;
-        def.description = "d";
-        def.execArgs = QStringList { QStringLiteral ("/bin/a"), QStringLiteral ("b c") };
-        QCOMPARE (buildUnitFile (def), buildUnitFile (def));
+    void parseExecArgs_invertsEscapeExecArg () {
+        // the roundtrip the unit file depends on: unitFileContent escapes,
+        // unitBackgrounds parses — any argv must survive unchanged
+        const QStringList argv { QStringLiteral ("/usr/bin/engine"),
+                                 QStringLiteral ("--bg"),
+                                 QStringLiteral ("843532366"),
+                                 QStringLiteral ("some dir/file"),
+                                 QStringLiteral ("say \"hi\""),
+                                 QStringLiteral ("a;b"),
+                                 QStringLiteral ("a\\b"),
+                                 QStringLiteral ("tab\tinside") };
+        QStringList line;
+        for (const QString& arg : argv)
+            line << escapeExecArg (arg);
+        QCOMPARE (parseExecArgs (line.join (' ')), argv);
+    }
+
+    void parseExecArgs_undoublesDollarAndPercent () {
+        // systemd undoes the doubling before exec, so the parsed argv must
+        // show the literal characters the engine will see
+        QCOMPARE (parseExecArgs (QString ("$$HOME")), QStringList { "$HOME" });
+        QCOMPARE (parseExecArgs (QString ("%%h")), QStringList { "%h" });
+        QCOMPARE (parseExecArgs (QString ("\"/tmp/a$$b c\"")), QStringList { "/tmp/a$b c" });
     }
 };
 

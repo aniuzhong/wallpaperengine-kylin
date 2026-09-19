@@ -23,4 +23,16 @@ bool restartUnit ();
 bool stopUnit ();
 QString unitState ();                           // active/inactive/failed/unknown
 
+// The screen a single-screen (v1) desktop applies to: the primary screen of
+// a live GUI session, "DP-0" when headless.
+QString fallbackScreenName ();
+
+// Single-screen v1: point the configured screen (or the fallback screen)
+// at the wallpaper.
+void assignScreen (Config& config, const QString& wallpaperId);
+
+// The one apply chain shared by the UI and the CLI: persist the config,
+// project it into the unit file, reload the manager, restart the unit.
+bool applyConfig (const Config& config);
+
 } // namespace EngineUnit

@@ -5,23 +5,17 @@
 #include "../service/config.h"
 #include "../service/engineunit.h"
 
-#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLineEdit>
 #include <QPushButton>
-#include <QScreen>
 #include <QSplitter>
 #include <QVBoxLayout>
 #include <algorithm>
 
 namespace {
-// mirrors the cli switch command: a configured screen keeps its name, an
-// unconfigured desktop falls back to the primary screen
-QString primaryScreenName () {
-    if (!qobject_cast<QGuiApplication*> (QCoreApplication::instance ()))
-        return QString ("DP-0");
-    return QGuiApplication::primaryScreen () ? QGuiApplication::primaryScreen ()->name () : QString ("DP-0");
-}
+// item role carrying the wallpaper id: lookup must not go through the
+// display title (titles are not unique)
+constexpr int kIdRole = Qt::UserRole + 1;
 } // namespace
 
 WallpaperUI::WallpaperUI (QWidget* parent) : QMainWindow (parent) {
@@ -91,27 +85,26 @@ void WallpaperUI::buildBody () {
         showDetail (m_grid->currentItem ());
     });
     // single click applies: the cli switch command runs through the same
-    // service chain (config -> unit file -> daemon-reload -> restart)
+    // service chain (assignScreen -> applyConfig)
     connect (m_grid, &QListWidget::itemClicked, this, [this] (QListWidgetItem* item) {
         if (item == nullptr)
             return;
-        const QString title = item->data (Qt::DisplayRole).toString ();
-        for (const WallpaperEntry& entry : m_entries)
-            if (entry.title == title)
-                applyEntry (entry);
+        if (const WallpaperEntry* entry = findEntry (item->data (kIdRole).toString ()))
+            applyEntry (*entry);
     });
+}
+
+const WallpaperEntry* WallpaperUI::findEntry (const QString& id) const {
+    for (const WallpaperEntry& entry : m_entries)
+        if (entry.id == id)
+            return &entry;
+    return nullptr;
 }
 
 void WallpaperUI::applyEntry (const WallpaperEntry& entry) {
     Config config = Config::load ();
-    if (config.screens.isEmpty ())
-        config.screens.insert (primaryScreenName (), entry.id);
-    else
-        config.screens.begin ().value () = entry.id; // single-screen v1
-
-    if (!config.save () || !EngineUnit::writeUnitFile (config) || !EngineUnit::daemonReload ()
-        || !EngineUnit::restartUnit ())
-        return; // the wallpaper keeps running; failure surfaces on the next manual start
+    EngineUnit::assignScreen (config, entry.id);
+    EngineUnit::applyConfig (config); // the wallpaper keeps running; failure surfaces on the next manual start
 }
 
 QList<WallpaperEntry> WallpaperUI::filtered () const {
@@ -142,6 +135,7 @@ void WallpaperUI::rebuildGrid () {
         auto* item = new QListWidgetItem (m_grid);
         item->setData (Qt::DisplayRole, entry.title);
         item->setData (Qt::UserRole, entry.type);
+        item->setData (kIdRole, entry.id);
         if (!entry.preview.isNull ())
             item->setIcon (QIcon (QPixmap::fromImage (entry.preview)));
     }
@@ -154,11 +148,6 @@ void WallpaperUI::rebuildGrid () {
 void WallpaperUI::showDetail (QListWidgetItem* current) {
     if (current == nullptr)
         return;
-    const QString title = current->data (Qt::DisplayRole).toString ();
-    for (const WallpaperEntry& entry : m_entries) {
-        if (entry.title == title) {
-            m_detail->showEntry (entry.title, entry.type, entry.size, entry.preview, entry.previewAnim);
-            return;
-        }
-    }
+    if (const WallpaperEntry* entry = findEntry (current->data (kIdRole).toString ()))
+        m_detail->showEntry (entry->title, entry->type, entry->size, entry->preview, entry->previewAnim);
 }

@@ -26,11 +26,6 @@ public:
 
     QString unitName () const;
 
-    // Persistent unit: write the file to ~/.config/systemd/user/<unit> and
-    // daemon-reload so the manager picks it up.
-    bool installUnitFile (const QString& content, Error* error = nullptr);
-    bool removeUnitFile (Error* error = nullptr);
-
     // Transient unit: StartTransientUnit without touching the filesystem.
     // Disappears with the session; ideal for relaunched system components.
     // extraProperties: optional additional unit properties (key -> value;
@@ -65,5 +60,10 @@ private:
 
 // Reload the user manager so freshly written unit files are picked up.
 bool daemonReload (Error* error = nullptr);
+
+// True when the error is an acceptable outcome of an idempotent control
+// operation: success, a unit that does not exist, or systemd's "not loaded"
+// phrasing for the same situation.
+bool tolerated (const Error& error);
 
 } // namespace SystemdLayer

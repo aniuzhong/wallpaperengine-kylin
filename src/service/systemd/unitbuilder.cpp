@@ -23,11 +23,47 @@ QString escapeExecArg (const QString& arg) {
     return escaped;
 }
 
-QStringList environmentAssignments (const QMap<QString, QString>& environment) {
-    QStringList assignments;
-    for (auto it = environment.begin (); it != environment.end (); ++it)
-        assignments << it.key () + "=" + it.value ();
-    return assignments;
+QStringList parseExecArgs (const QString& line) {
+    QStringList args;
+    QString current;
+    bool inQuotes = false;
+    const auto flush = [&] {
+        if (!current.isEmpty ()) {
+            args << current;
+            current.clear ();
+        }
+    };
+
+    for (int i = 0; i < line.size (); i++) {
+        const QChar c = line.at (i);
+        if (inQuotes) {
+            // escapeExecArg only emits \\ and \" inside quotes; any other
+            // backslash sequence stays literal
+            if (c == '\\' && i + 1 < line.size () && (line.at (i + 1) == '"' || line.at (i + 1) == '\\')) {
+                current += line.at (i + 1);
+                i++;
+            } else if (c == '"') {
+                inQuotes = false;
+            } else {
+                current += c;
+            }
+        } else if (c == '"') {
+            inQuotes = true;
+        } else if (c == ' ') {
+            flush ();
+        } else {
+            current += c;
+        }
+    }
+    flush ();
+
+    // undo the doubling the same way systemd does before exec, so callers
+    // see the argv the engine will actually run with
+    for (QString& arg : args) {
+        arg.replace ("$$", "$");
+        arg.replace ("%%", "%");
+    }
+    return args;
 }
 
 ExecCommand toExecCommand (const QStringList& execArgs) {
@@ -37,36 +73,6 @@ ExecCommand toExecCommand (const QStringList& execArgs) {
         command.args = execArgs;
     }
     return command;
-}
-
-QString buildUnitFile (const UnitDefinition& def) {
-    const ExecCommand command = toExecCommand (def.execArgs);
-    QStringList escapedArgs;
-    for (const QString& arg : command.args)
-        escapedArgs << escapeExecArg (arg);
-
-    QString text;
-    text += "[Unit]\n";
-    text += "Description=" + (def.description.isEmpty () ? QString ("wallpaper unit") : def.description) + "\n";
-    if (!def.partOf.isEmpty ())
-        text += "PartOf=" + def.partOf + "\n";
-    text += "\n[Service]\n";
-    text += "Type=simple\n";
-    text += "ExecStart=" + escapedArgs.join (' ') + "\n";
-
-    const QStringList assignments = environmentAssignments (def.environment);
-    if (!assignments.isEmpty ()) {
-        QStringList escaped;
-        for (const QString& assignment : assignments)
-            escaped << escapeExecArg (assignment);
-        text += "Environment=" + escaped.join (' ') + "\n";
-    }
-
-    if (def.restartOnFailure)
-        text += "Restart=on-failure\nRestartSec=3\n";
-
-    text += "\n[Install]\nWantedBy=graphical-session.target\n";
-    return text;
 }
 
 } // namespace SystemdLayer

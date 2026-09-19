@@ -1,11 +1,15 @@
 #include "engineunit.h"
 
 #include "argvbuilder.h"
+#include "systemd/unitbuilder.h"
 #include "systemdunit.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QGuiApplication>
+#include <QScreen>
 #include <QStandardPaths>
 
 namespace {
@@ -14,15 +18,6 @@ namespace {
 QString unitNameFromEnv () {
     static const QString name = qEnvironmentVariable ("WALLPAPER_ENGINE_UNIT", "linux-wallpaperengine");
     return name;
-}
-
-// stop/reset-failed on a unit that was never loaded already has the desired
-// end state: systemd reports NoSuchUnit ("not loaded", systemctl's old exit
-// code 5). Treat it as success — keeps the CLI idempotent for scripting.
-// Mirrors the tolerance in SystemdLayer::resetFailed.
-bool tolerated (const SystemdLayer::Error& error) {
-    return error.kind == SystemdLayer::Error::NoError ||
-           error.kind == SystemdLayer::Error::NoSuchUnit || error.message.contains ("not loaded");
 }
 
 } // namespace
@@ -40,14 +35,13 @@ QString unitPath () {
 }
 
 QString unitFileContent (const Config& config) {
-    // systemd ExecStart quoting: double-quote arguments containing spaces
-    QString exec;
-    const QStringList argv = buildArgv (config);
-    for (const QString& arg : argv) {
-        if (!exec.isEmpty ())
-            exec += QLatin1Char (' ');
-        exec += (arg.contains (' ') || arg.contains ('"')) ? '"' + arg + '"' : arg;
-    }
+    // systemd ExecStart quoting: escapeExecArg quotes arguments containing
+    // whitespace and doubles "$"/"%" so systemd's substitution does not eat
+    // them; unitBackgrounds() inverts exactly this escaping
+    QStringList escapedArgs;
+    for (const QString& arg : buildArgv (config))
+        escapedArgs << SystemdLayer::escapeExecArg (arg);
+    const QString exec = escapedArgs.join (' ');
 
     // persist the XAUTHORITY path this session actually uses: sddm/gdm keep
     // the cookie outside $HOME, and the engine's user unit would otherwise
@@ -83,37 +77,15 @@ QMap<QString, QString> unitBackgrounds () {
         return result;
 
     // the unit file is what systemd actually runs; parse its ExecStart so
-    // status reflects reality even after manual unit edits. Tokenizing
-    // mirrors unitFileContent's quoting: arguments with spaces are wrapped
-    // in double quotes, inner quotes are backslash-escaped.
+    // status reflects reality even after manual unit edits. parseExecArgs
+    // inverts the escaping unitFileContent applied.
     static const QString execKey = QStringLiteral ("ExecStart=");
     const QStringList lines = QString::fromUtf8 (file.readAll ()).split ('\n');
     for (const QString& line : lines) {
         if (!line.startsWith (execKey))
             continue;
 
-        const QString body = line.mid (execKey.size ());
-        QStringList args;
-        QString current;
-        bool inQuotes = false;
-        for (int i = 0; i < body.size (); i++) {
-            const QChar c = body.at (i);
-            if (inQuotes && c == '\\' && i + 1 < body.size () && body.at (i + 1) == '"') {
-                current += '"';
-                i++;
-            } else if (c == '"') {
-                inQuotes = !inQuotes;
-            } else if (c == ' ' && !inQuotes) {
-                if (!current.isEmpty ())
-                    args << current;
-                current.clear ();
-            } else {
-                current += c;
-            }
-        }
-        if (!current.isEmpty ())
-            args << current;
-
+        const QStringList args = SystemdLayer::parseExecArgs (line.mid (execKey.size ()));
         QString screen;
         for (int i = 0; i < args.size (); i++) {
             if (args.at (i) == "--screen-root" && i + 1 < args.size ())
@@ -162,12 +134,40 @@ bool stopUnit () {
     SystemdLayer::SystemdUnit unit (unitNameFromEnv ());
     SystemdLayer::Error error;
     unit.stop (&error);
-    return tolerated (error);
+    // stop/reset-failed on a unit that was never loaded already has the
+    // desired end state: systemd reports NoSuchUnit ("not loaded",
+    // systemctl's old exit code 5). Treat it as success — keeps the CLI
+    // idempotent for scripting.
+    return SystemdLayer::tolerated (error);
 }
 
 QString unitState () {
     SystemdLayer::SystemdUnit unit (unitNameFromEnv ());
     return unit.activeState ();
+}
+
+QString fallbackScreenName () {
+    // under the headless control plane there is no QGuiApplication and
+    // primaryScreen() would dereference a null private instance — only ask
+    // for a screen when a Gui application instance actually exists
+    if (!qobject_cast<QGuiApplication*> (QCoreApplication::instance ()))
+        return QStringLiteral ("DP-0");
+    if (const QScreen* screen = QGuiApplication::primaryScreen ())
+        return screen->name ();
+    return QStringLiteral ("DP-0");
+}
+
+void assignScreen (Config& config, const QString& wallpaperId) {
+    if (config.screens.isEmpty ())
+        config.screens.insert (fallbackScreenName (), wallpaperId);
+    else
+        config.screens.begin ().value () = wallpaperId; // single-screen v1
+}
+
+bool applyConfig (const Config& config) {
+    // the one apply chain: persist the draft, project it into the unit file
+    // the manager runs, reload, restart
+    return config.save () && writeUnitFile (config) && daemonReload () && restartUnit ();
 }
 
 } // namespace EngineUnit

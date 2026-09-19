@@ -49,6 +49,9 @@ void DetailPanel::showEntry (const QString& title, const QString& type, const QS
     // previews play the bytes the service handed over.
 
     stopMovie ();
+    m_title->setText (title);
+    m_meta->setText (type + " · " + size);
+
     if (!previewAnim.isEmpty ()) {
         m_animData = previewAnim;
         m_buffer = new QBuffer (&m_animData, this);
@@ -58,8 +61,6 @@ void DetailPanel::showEntry (const QString& title, const QString& type, const QS
         connect (m_movie, &QMovie::frameChanged, this,
                  [this] { m_preview->setPixmap (m_movie->currentPixmap ()); });
         m_movie->start ();
-        m_title->setText (title);
-        m_meta->setText (type + " · " + size);
         return;
     }
 
@@ -77,9 +78,6 @@ void DetailPanel::showEntry (const QString& title, const QString& type, const QS
     } else {
         m_preview->setPixmap (QPixmap::fromImage (preview));
     }
-
-    m_title->setText (title);
-    m_meta->setText (type + " · " + size);
 }
 
 void DetailPanel::clear () {

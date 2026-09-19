@@ -3,14 +3,15 @@
 // without enable-linger). Every unit created here uses the isolated
 // "lwe-test-" prefix and is stopped/removed afterwards.
 #include "../src/service/systemd/systemdunit.h"
-#include "../src/service/systemd/unitbuilder.h"
 
 #include <QDBusConnection>
 #include <QDBusVariant>
+#include <QDir>
 #include <QProcess>
 #include <QDBusMessage>
 #include <QFile>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QtTest>
 
 #include <csignal>
@@ -45,7 +46,6 @@ private slots:
 
     void cleanup () {
         m_unit->stop ();
-        m_unit->removeUnitFile ();
         QFile unitFile (QStandardPaths::writableLocation (QStandardPaths::GenericConfigLocation) +
                         "/systemd/user/" + m_name);
         QFile::remove (unitFile.fileName ());
@@ -54,7 +54,7 @@ private slots:
     // ---- pure install behavior --------------------------------------------
 
     void installUnitFile_createsFileAndLoadsUnit () {
-        QVERIFY (m_unit->installUnitFile (sleepUnitContent ()));
+        QVERIFY (installUnitFile (sleepUnitContent ()));
         const QString path = QStandardPaths::writableLocation (QStandardPaths::GenericConfigLocation) +
                              "/systemd/user/" + m_name;
         QVERIFY (QFile::exists (path));
@@ -67,7 +67,7 @@ private slots:
 
     void installUnitFile_textSurvivesRoundtrip () {
         const QString content = sleepUnitContent () + "# marker line\n";
-        QVERIFY (m_unit->installUnitFile (content));
+        QVERIFY (installUnitFile (content));
         const QString path = QStandardPaths::writableLocation (QStandardPaths::GenericConfigLocation) +
                              "/systemd/user/" + m_name;
         QFile file (path);
@@ -78,7 +78,7 @@ private slots:
     // ---- lifecycle ---------------------------------------------------------
 
     void lifecycle_startStopRestart () {
-        QVERIFY (m_unit->installUnitFile (sleepUnitContent ()));
+        QVERIFY (installUnitFile (sleepUnitContent ()));
 
         QVERIFY (m_unit->start ());
         QTRY_COMPARE (m_unit->activeState (), QString ("active"));
@@ -93,11 +93,7 @@ private slots:
     }
 
     void selfHeal_onMainProcessKill () {
-        UnitDefinition def;
-        def.description = "lwe self-heal test";
-        def.execArgs = QStringList { QStringLiteral ("/bin/sleep"), QStringLiteral ("3600") };
-        def.restartOnFailure = true;
-        QVERIFY (m_unit->installUnitFile (buildUnitFile (def)));
+        QVERIFY (installUnitFile (selfHealUnitContent ()));
 
         QVERIFY (m_unit->start ());
         QTRY_COMPARE (m_unit->activeState (), QString ("active"));
@@ -112,7 +108,7 @@ private slots:
     }
 
     void stateChanged_signalFiresOnStart () {
-        QVERIFY (m_unit->installUnitFile (sleepUnitContent ()));
+        QVERIFY (installUnitFile (sleepUnitContent ()));
         QSignalSpy spy (m_unit.get (), &SystemdUnit::stateChanged);
         QVERIFY (spy.isValid ());
 
@@ -240,6 +236,34 @@ private slots:
     // ---- helpers -------------------------------------------------------------
 
 private:
+    // test-local stand-in for the removed SystemdUnit::installUnitFile:
+    // write the unit file where the user manager looks and reload it
+    bool installUnitFile (const QString& content) {
+        const QString dir = QStandardPaths::writableLocation (QStandardPaths::GenericConfigLocation) +
+                            "/systemd/user";
+        QDir ().mkpath (dir);
+        QFile file (dir + "/" + m_name);
+        if (!file.open (QIODevice::WriteOnly | QIODevice::Truncate))
+            return false;
+        file.write (content.toUtf8 ());
+        file.close ();
+        return SystemdLayer::daemonReload ();
+    }
+
+    static QString selfHealUnitContent () {
+        return "[Unit]\n"
+               "Description=lwe self-heal test\n"
+               "\n"
+               "[Service]\n"
+               "Type=simple\n"
+               "Restart=on-failure\n"
+               "RestartSec=3\n"
+               "ExecStart=/bin/sleep 3600\n"
+               "\n"
+               "[Install]\n"
+               "WantedBy=graphical-session.target\n";
+    }
+
     static QString sleepUnitContent () {
         return "[Unit]\n"
                "Description=lwe integration test\n"

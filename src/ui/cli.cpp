@@ -6,17 +6,13 @@
 #include "library.h"
 #include "engineunit.h"
 
-#include <QCoreApplication>
-#include <QGuiApplication>
 #include <QJsonArray>
 #include <QFile>
 #include <QDir>
-#include <QScreen>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
 #include <QRandomGenerator>
-#include <QStandardPaths>
 #include <cstdio>
 
 namespace {
@@ -49,7 +45,6 @@ void printUsage () {
 int cmdStatus (bool json) {
     const Config config = Config::load ();
     const QString state = EngineUnit::unitState ();
-    std::fprintf (stderr, "S3 state=%s\n", state.toUtf8 ().constData ());
     // the unit file is what systemd actually runs; config.json is the
     // editor's draft. Prefer the unit's own ExecStart so status tells the
     // truth even after manual unit edits; fall back to config when the
@@ -131,22 +126,9 @@ int cmdSwitch (const QStringList& args) {
     }
 
     Config updated = config;
-    if (updated.screens.isEmpty ()) {
-        QString screenName ("DP-0");
-        // under the headless control plane there is no QGuiApplication and
-        // primaryScreen() would dereference a null private instance — only
-        // ask for a screen when a Gui application instance actually exists
-        if (qobject_cast<QGuiApplication*> (QCoreApplication::instance ())) {
-            if (const QScreen* screen = QGuiApplication::primaryScreen ())
-                screenName = screen->name ();
-        }
-        updated.screens.insert (screenName, id);
-    } else {
-        updated.screens.begin ().value () = id; // single-screen v1
-    }
+    EngineUnit::assignScreen (updated, id);
 
-    if (!updated.save () || !EngineUnit::writeUnitFile (updated) || !EngineUnit::daemonReload ()
-        || !EngineUnit::restartUnit ()) {
+    if (!EngineUnit::applyConfig (updated)) {
         std::printf ("switch: failed to (re)start the engine unit\n");
         return EXIT_FAIL;
     }
@@ -194,9 +176,9 @@ int cmdDoctor () {
     std::printf ("workshop dir: %s (%d wallpapers)\n", config.workshopDir.toUtf8 ().constData (),
                  static_cast<int> (scanLibrary (config.workshopDir).size ()));
 
-    const qint64 pid = Integration::detect ().peonyPid;
-    std::printf ("peony: pid=%lld %s\n", static_cast<long long> (pid),
-                 pid > 0 ? (Integration::detect ().shimLoaded ? "injected" : "running WITHOUT shim") : "not running");
+    const Integration::Status peony = Integration::detect ();
+    std::printf ("peony: pid=%lld %s\n", static_cast<long long> (peony.peonyPid),
+                 peony.peonyPid > 0 ? (peony.shimLoaded ? "injected" : "running WITHOUT shim") : "not running");
 
     std::printf ("unit %s: %s, unit file %s\n", EngineUnit::unitName ().toUtf8 ().constData (),
                  EngineUnit::unitState ().toUtf8 ().constData (), EngineUnit::unitPath ().toUtf8 ().constData ());

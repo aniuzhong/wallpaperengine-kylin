@@ -18,6 +18,7 @@ public:
 private:
     void buildToolbar ();
     void buildBody ();
+    const WallpaperEntry* findEntry (const QString& id) const;
     QList<WallpaperEntry> filtered () const;
     void rebuildGrid ();
     void showDetail (QListWidgetItem* current);

@@ -6,9 +6,6 @@
 #include <QDBusMessage>
 #include <QDBusMetaType>
 #include <QDBusVariant>
-#include <QDir>
-#include <QFile>
-#include <QStandardPaths>
 #include <QVariant>
 #include <utility>
 
@@ -140,6 +137,11 @@ bool daemonReload (Error* error) {
     return local.kind == Error::NoError;
 }
 
+bool tolerated (const Error& error) {
+    return error.kind == Error::NoError || error.kind == Error::NoSuchUnit ||
+           error.message.contains ("not loaded");
+}
+
 QString unitObjectPathFromId (const QString& unitId) {
     // systemd escapes every non [A-Za-z0-9] byte of the unit id as _XX
     QString escaped;
@@ -175,38 +177,6 @@ void SystemdUnit::subscribe () {
                                             "PropertiesChanged", this,
                                             SLOT (onPropertiesChanged (QDBusMessage)));
     m_subscribed = true;
-}
-
-bool SystemdUnit::installUnitFile (const QString& content, Error* error) {
-    const QString dir = QStandardPaths::writableLocation (QStandardPaths::GenericConfigLocation) + "/systemd/user";
-    QDir ().mkpath (dir);
-    QFile file (dir + "/" + m_unitName);
-    if (!file.open (QIODevice::WriteOnly | QIODevice::Truncate)) {
-        if (error) {
-            error->kind = Error::InvalidInput;
-            error->message = "cannot write " + file.fileName ();
-        }
-        return false;
-    }
-    file.write (content.toUtf8 ());
-    file.close ();
-
-    Error reloadError;
-    callManager ("Reload", {}, &reloadError);
-    if (reloadError.kind != Error::NoError) {
-        if (error) *error = reloadError;
-        return false;
-    }
-    return true;
-}
-
-bool SystemdUnit::removeUnitFile (Error* error) {
-    const QString dir = QStandardPaths::writableLocation (QStandardPaths::GenericConfigLocation) + "/systemd/user";
-    QFile::remove (dir + "/" + m_unitName);
-    Error reloadError;
-    callManager ("Reload", {}, &reloadError);
-    if (error) *error = reloadError;
-    return reloadError.kind == Error::NoError;
 }
 
 bool SystemdUnit::startTransient (const QStringList& execArgs, const QMap<QString, QString>& environment,
@@ -280,8 +250,8 @@ bool SystemdUnit::resetFailed (Error* error) {
     // systemd errors on it, but callers mean "make sure it can start", so
     // that outcome is success
     Error local;
-    const QDBusMessage reply = callManager ("ResetFailedUnit", { m_unitName }, &local);
-    if (local.kind != Error::NoError && local.message.contains ("not loaded"))
+    callManager ("ResetFailedUnit", { m_unitName }, &local);
+    if (tolerated (local))
         local = {};
     if (error) *error = local;
     return local.kind == Error::NoError;

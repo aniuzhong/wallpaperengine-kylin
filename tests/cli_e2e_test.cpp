@@ -6,7 +6,6 @@
 #include "../src/service/engineunit.h"
 
 #include <QDBusConnection>
-#include <QScreen>
 #include <QProcess>
 #include <QtTest>
 
@@ -22,15 +21,6 @@ QString unitState (const QString& unit) {
     process.start ("systemctl", QStringList { "--user", "is-active", unit });
     process.waitForFinished (10000);
     return QString::fromUtf8 (process.readAllStandardOutput ()).trimmed ();
-}
-
-QString primaryScreenName () {
-    // the e2e test runs a plain QCoreApplication (see QTEST_GUILESS_MAIN
-    // below): primaryScreen() would dereference a null private instance,
-    // so only ask for a screen when a Gui application actually exists
-    if (!qobject_cast<QGuiApplication*> (QCoreApplication::instance ()))
-        return QString ("DP-0");
-    return QGuiApplication::primaryScreen () ? QGuiApplication::primaryScreen ()->name () : QString ("DP-0");
 }
 
 struct CliResult {
@@ -71,7 +61,9 @@ private slots:
         Config config = Config::load ();
         m_previous = config.screens.isEmpty () ? QString () : config.screens.first ();
         m_target = m_previous.isEmpty () ? QString ("843532366") : m_previous;
-        m_screen = primaryScreenName ();
+        // the same fallback the CLI itself uses: both this test process and
+        // the CLI subprocess are headless, so they resolve identically
+        m_screen = EngineUnit::fallbackScreenName ();
 
         // the test process itself must address the SAME unit as the CLI
         // subprocesses it spawns
