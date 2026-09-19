@@ -1,7 +1,7 @@
 #include "mainwindow.h"
 
 #include "integration.h"
-#include "systemd.h"
+#include "engineunit.h"
 
 #include <QGuiApplication>
 #include <QScreen>
@@ -125,7 +125,7 @@ void MainWindow::applySelected () {
     // persist config, regenerate the unit from it, then restart the engine.
     // the UI is only the editor of the unit; the wallpaper survives a UI exit.
     m_config.save ();
-    const bool ok = Systemd::writeUnitFile (m_config) && Systemd::daemonReload () && Systemd::restartUnit ();
+    const bool ok = EngineUnit::writeUnitFile (m_config) && EngineUnit::daemonReload () && EngineUnit::restartUnit ();
 
     if (ok) {
         m_statusLabel->setText (QString ("applied: %1 [%2] on %3").arg (item->text (), id, m_screenName));
@@ -161,16 +161,16 @@ void MainWindow::runIntegrationSetup () {
 }
 
 void MainWindow::togglePause () {
-    if (Systemd::unitState () == "active") {
-        Systemd::stopUnit ();
+    if (EngineUnit::unitState () == "active") {
+        EngineUnit::stopUnit ();
     } else {
-        Systemd::restartUnit ();
+        EngineUnit::restartUnit ();
     }
     updateStatus ();
 }
 
 void MainWindow::updateStatus () {
-    const QString state = Systemd::unitState ();
+    const QString state = EngineUnit::unitState ();
     const QString current = m_config.screens.value (m_screenName);
     m_statusLabel->setText (QString ("engine: %1 · screen %2: %3").arg (state, m_screenName, current));
     m_pauseButton->setText (state == "active" ? "Pause" : "Resume");

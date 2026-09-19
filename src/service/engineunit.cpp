@@ -1,4 +1,4 @@
-#include "systemd.h"
+#include "engineunit.h"
 
 #include "argvbuilder.h"
 #include "systemdunit.h"
@@ -27,7 +27,7 @@ bool tolerated (const SystemdLayer::Error& error) {
 
 } // namespace
 
-namespace Systemd {
+namespace EngineUnit {
 
 QString unitName () { return unitNameFromEnv (); }
 
@@ -177,4 +177,4 @@ QString unitState () {
     return unit.activeState ();
 }
 
-} // namespace Systemd
+} // namespace EngineUnit

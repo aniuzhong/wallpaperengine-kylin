@@ -4,7 +4,7 @@
 #include "config.h"
 #include "integration.h"
 #include "library.h"
-#include "systemd.h"
+#include "engineunit.h"
 
 #include <QCoreApplication>
 #include <QGuiApplication>
@@ -48,24 +48,24 @@ void printUsage () {
 
 int cmdStatus (bool json) {
     const Config config = Config::load ();
-    const QString state = Systemd::unitState ();
+    const QString state = EngineUnit::unitState ();
     std::fprintf (stderr, "S3 state=%s\n", state.toUtf8 ().constData ());
     // the unit file is what systemd actually runs; config.json is the
     // editor's draft. Prefer the unit's own ExecStart so status tells the
     // truth even after manual unit edits; fall back to config when the
     // unit file does not exist (or carries no wallpaper) yet.
-    QMap<QString, QString> screens = Systemd::unitBackgrounds ();
+    QMap<QString, QString> screens = EngineUnit::unitBackgrounds ();
     if (screens.isEmpty ())
         screens = config.screens;
     if (!json) {
-        std::printf ("unit: %s (%s)\n", Systemd::unitName ().toUtf8 ().constData (), state.toUtf8 ().constData ());
+        std::printf ("unit: %s (%s)\n", EngineUnit::unitName ().toUtf8 ().constData (), state.toUtf8 ().constData ());
         for (auto it = screens.begin (); it != screens.end (); ++it)
             std::printf ("screen %s: %s\n", it.key ().toUtf8 ().constData (), it.value ().toUtf8 ().constData ());
         std::printf ("engine: %s\n", config.enginePath.toUtf8 ().constData ());
         return EXIT_OK;
     }
     QJsonObject status;
-    status.insert ("unit", Systemd::unitName ());
+    status.insert ("unit", EngineUnit::unitName ());
     status.insert ("state", state);
     QJsonObject screensJson;
     for (auto it = screens.begin (); it != screens.end (); ++it)
@@ -145,8 +145,8 @@ int cmdSwitch (const QStringList& args) {
         updated.screens.begin ().value () = id; // single-screen v1
     }
 
-    if (!updated.save () || !Systemd::writeUnitFile (updated) || !Systemd::daemonReload ()
-        || !Systemd::restartUnit ()) {
+    if (!updated.save () || !EngineUnit::writeUnitFile (updated) || !EngineUnit::daemonReload ()
+        || !EngineUnit::restartUnit ()) {
         std::printf ("switch: failed to (re)start the engine unit\n");
         return EXIT_FAIL;
     }
@@ -198,8 +198,8 @@ int cmdDoctor () {
     std::printf ("peony: pid=%lld %s\n", static_cast<long long> (pid),
                  pid > 0 ? (Integration::detect ().shimLoaded ? "injected" : "running WITHOUT shim") : "not running");
 
-    std::printf ("unit %s: %s, unit file %s\n", Systemd::unitName ().toUtf8 ().constData (),
-                 Systemd::unitState ().toUtf8 ().constData (), Systemd::unitPath ().toUtf8 ().constData ());
+    std::printf ("unit %s: %s, unit file %s\n", EngineUnit::unitName ().toUtf8 ().constData (),
+                 EngineUnit::unitState ().toUtf8 ().constData (), EngineUnit::unitPath ().toUtf8 ().constData ());
     return EXIT_OK;
 }
 
@@ -216,14 +216,14 @@ int runCli (const QStringList& args) {
     const bool json = rest.contains ("--json");
 
     if (command == "start" || command == "resume") {
-        if (!Systemd::writeUnitFile (Config::load ()) || !Systemd::daemonReload ())
+        if (!EngineUnit::writeUnitFile (Config::load ()) || !EngineUnit::daemonReload ())
             return EXIT_FAIL;
-        return Systemd::startUnit () ? EXIT_OK : EXIT_FAIL;
+        return EngineUnit::startUnit () ? EXIT_OK : EXIT_FAIL;
     }
     if (command == "stop" || command == "pause")
-        return Systemd::stopUnit () ? EXIT_OK : EXIT_FAIL;
+        return EngineUnit::stopUnit () ? EXIT_OK : EXIT_FAIL;
     if (command == "restart")
-        return Systemd::restartUnit () ? EXIT_OK : EXIT_FAIL;
+        return EngineUnit::restartUnit () ? EXIT_OK : EXIT_FAIL;
     if (command == "status")
         return cmdStatus (json);
     if (command == "list")

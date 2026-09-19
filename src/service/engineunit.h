@@ -10,7 +10,7 @@
 // running wallpaper.
 //
 // The unit name can be overridden with WALLPAPER_ENGINE_UNIT (tests).
-namespace Systemd {
+namespace EngineUnit {
 
 QString unitName ();                            // WALLPAPER_ENGINE_UNIT or "linux-wallpaperengine"
 QString unitPath ();                            // ~/.config/systemd/user/<unit>.service
@@ -24,4 +24,4 @@ bool stopUnit ();
 bool resetFailedUnit ();
 QString unitState ();                           // active/inactive/failed/unknown
 
-} // namespace Systemd
+} // namespace EngineUnit

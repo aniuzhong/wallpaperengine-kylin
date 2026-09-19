@@ -1,7 +1,7 @@
 // T0 pure-logic tests: Config persistence (JSON roundtrip, isolation).
 // QStandardPaths::setTestModeEnabled redirects GenericConfigLocation away
 // from the real ~/.config so these tests never touch user state.
-#include "../src/ui/config.h"
+#include "../src/service/config.h"
 
 #include <QFile>
 #include <QStandardPaths>

@@ -5,6 +5,7 @@
 #include "cli.h"
 #include "config.h"
 #include "mainwindow.h"
+#include "wallpaperui/wallpaperui.h"
 
 #include <QApplication>
 #include <QCoreApplication>
@@ -43,6 +44,14 @@ int main (int argc, char** argv) {
         std::printf ("screens: %d, fps: %d, silent: %s\n", static_cast<int> (config.screens.size ()), config.fps,
                      config.silent ? "true" : "false");
         return config.save () ? 0 : 1;
+    }
+
+    if (args.contains ("--wallpaper-ui")) {
+        // M0 scaffold of the new frontend behind a flag; it becomes the
+        // default entry at M2 once parity is signed off (tmp/plan.md)
+        WallpaperUI window;
+        window.show ();
+        return app->exec ();
     }
 
     MainWindow window;

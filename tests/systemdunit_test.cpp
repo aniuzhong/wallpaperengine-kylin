@@ -2,8 +2,8 @@
 // session bus. Skips automatically when no user bus is available (e.g. CI
 // without enable-linger). Every unit created here uses the isolated
 // "lwe-test-" prefix and is stopped/removed afterwards.
-#include "../src/systemd/systemdunit.h"
-#include "../src/systemd/unitbuilder.h"
+#include "../src/service/systemd/systemdunit.h"
+#include "../src/service/systemd/unitbuilder.h"
 
 #include <QDBusConnection>
 #include <QDBusVariant>

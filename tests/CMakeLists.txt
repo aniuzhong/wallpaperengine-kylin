@@ -2,30 +2,30 @@
 # systemd user session bus and skip automatically when it is absent.
 find_package (Qt5 REQUIRED COMPONENTS Core DBus Test)
 
-add_executable (unitbuilder_test unitbuilder_test.cpp ../src/systemd/unitbuilder.cpp)
+add_executable (unitbuilder_test unitbuilder_test.cpp ../src/service/systemd/unitbuilder.cpp)
 target_link_libraries (unitbuilder_test PRIVATE Qt5::Core Qt5::Test)
 add_test (NAME unitbuilder_test COMMAND unitbuilder_test)
 
 # T0: Config -> argv mapping (pure)
-add_executable (argvbuilder_test argvbuilder_test.cpp ../src/ui/argvbuilder.cpp ../src/ui/config.cpp)
+add_executable (argvbuilder_test argvbuilder_test.cpp ../src/service/argvbuilder.cpp ../src/service/config.cpp)
 target_link_libraries (argvbuilder_test PRIVATE Qt5::Core Qt5::Test)
 add_test (NAME argvbuilder_test COMMAND argvbuilder_test)
 
 # T0: Config persistence roundtrip
-add_executable (config_test config_test.cpp ../src/ui/config.cpp)
+add_executable (config_test config_test.cpp ../src/service/config.cpp)
 target_link_libraries (config_test PRIVATE Qt5::Core Qt5::Test)
 add_test (NAME config_test COMMAND config_test)
 
 # T3: headless CLI end-to-end against the real user manager (isolated by
 # the dedicated linux-wallpaperengine-e2e-test unit name; config stays the user's own and is
 # restored by cleanup)
-add_executable (cli_e2e_test cli_e2e_test.cpp ../src/ui/config.cpp ../src/ui/systemd.cpp ../src/ui/argvbuilder.cpp)
-target_link_libraries (cli_e2e_test PRIVATE Qt5::Core Qt5::Gui Qt5::DBus Qt5::Test systemd_layer)
+add_executable (cli_e2e_test cli_e2e_test.cpp ../src/service/config.cpp ../src/service/engineunit.cpp ../src/service/argvbuilder.cpp)
+target_link_libraries (cli_e2e_test PRIVATE Qt5::Core Qt5::Gui Qt5::DBus Qt5::Test wallpaper_service)
 target_compile_definitions (cli_e2e_test PRIVATE
     WALLPAPER_ENGINE_BIN="${CMAKE_BINARY_DIR}/wallpaper-engine")
 add_test (NAME cli_e2e_test COMMAND cli_e2e_test)
 
-add_executable (systemdunit_test systemdunit_test.cpp ../src/systemd/systemdunit.cpp ../src/systemd/unitbuilder.cpp)
+add_executable (systemdunit_test systemdunit_test.cpp ../src/service/systemd/systemdunit.cpp ../src/service/systemd/unitbuilder.cpp)
 target_link_libraries (systemdunit_test PRIVATE Qt5::Core Qt5::DBus Qt5::Test)
 add_test (NAME systemdunit_test COMMAND systemdunit_test)
 

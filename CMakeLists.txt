@@ -10,19 +10,34 @@ find_package(X11 REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(XCB REQUIRED xcb)
 
+# ---- wallpaper_service
+# Control core (frontend-free): the generic systemd D-Bus client plus the
+# wallpaper domain logic (config persistence, argv mapping, library scan,
+# peony integration, engine-unit facade). Frontends link this and nothing
+# else — they must never talk to systemctl or craft unit files themselves.
+add_library(wallpaper_service STATIC
+    src/service/systemd/systemdunit.cpp
+    src/service/systemd/unitbuilder.cpp
+    src/service/config.cpp
+    src/service/argvbuilder.cpp
+    src/service/library.cpp
+    src/service/integration.cpp
+    src/service/engineunit.cpp
+)
+target_include_directories(wallpaper_service PUBLIC src/service src/service/systemd)
+target_link_libraries(wallpaper_service PUBLIC Qt5::Core Qt5::Gui Qt5::DBus)
+target_compile_options(wallpaper_service PRIVATE -Wall -Wextra)
+
 # ---- wallpaper-engine
-# UI / CLI control surface for the integration(scaffold: config + selftest)
+# Frontend binary: headless CLI plus the UI windows. Default entry is the
+# legacy minimal UI; `--wallpaper-ui` opens the new Wallpaper UI scaffold.
 add_executable(wallpaper-engine
     src/ui/main.cpp
     src/ui/cli.cpp
-    src/ui/config.cpp
-    src/ui/argvbuilder.cpp
-    src/ui/library.cpp
-    src/ui/systemd.cpp
     src/ui/mainwindow.cpp
-    src/ui/integration.cpp
+    src/ui/wallpaperui/wallpaperui.cpp
 )
-target_link_libraries(wallpaper-engine PRIVATE Qt5::Core Qt5::Widgets systemd_layer) 
+target_link_libraries(wallpaper-engine PRIVATE Qt5::Core Qt5::Widgets wallpaper_service)
 target_include_directories(wallpaper-engine PRIVATE src/ui)
 target_compile_options(wallpaper-engine PRIVATE -Wall -Wextra)
 
@@ -31,15 +46,6 @@ target_compile_options(wallpaper-engine PRIVATE -Wall -Wextra)
 # transparent and rewrites its window type for ukui-kwin. Exported symbols
 # carry explicit visibility attributes in the source; Qt symbols resolve
 # from the host process at load time, hence they are not linked here.
-# systemd control layer (used by the integration sources; also unit-tested)
-add_library(systemd_layer STATIC
-    src/systemd/systemdunit.cpp
-    src/systemd/unitbuilder.cpp
-)
-target_include_directories(systemd_layer PUBLIC src/systemd)
-target_link_libraries(systemd_layer PUBLIC Qt5::Core Qt5::DBus)
-target_compile_options(systemd_layer PRIVATE -Wall -Wextra)
-
 add_library(peony-alpha-shim SHARED
     src/shim/peony-alpha-shim.cpp
 )

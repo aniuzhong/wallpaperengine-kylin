@@ -1,6 +1,6 @@
 // Pure-logic tests for the systemd layer: unit file text and transient
 // property decomposition. No bus required — these must pass everywhere.
-#include "../src/systemd/unitbuilder.h"
+#include "../src/service/systemd/unitbuilder.h"
 
 #include <QtTest>
 

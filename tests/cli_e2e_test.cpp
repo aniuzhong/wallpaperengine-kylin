@@ -2,8 +2,8 @@
 // manager. Uses the real config but a dedicated test unit name
 // (linux-wallpaperengine-e2e-test) and restores the previous wallpaper selection afterwards,
 // so the user's desktop state is preserved.
-#include "../src/ui/config.h"
-#include "../src/ui/systemd.h"
+#include "../src/service/config.h"
+#include "../src/service/engineunit.h"
 
 #include <QDBusConnection>
 #include <QScreen>
@@ -83,7 +83,7 @@ private slots:
         QCOMPARE (switched.exitCode, 0);
 
         // unit file updated, loaded by the manager and running
-        QFile unit (Systemd::unitPath ());
+        QFile unit (EngineUnit::unitPath ());
         QVERIFY (unit.exists ());
         QVERIFY (unit.open (QIODevice::ReadOnly));
         QVERIFY (QString::fromUtf8 (unit.readAll ()).contains ("--bg " + m_target));
@@ -109,7 +109,7 @@ private slots:
         QCOMPARE (unitState (kTestUnit), QString ("inactive"));
         QVERIFY (runCli ({ "resume" }).exitCode == 0);
         QTRY_COMPARE (unitState (kTestUnit), QString ("active"));
-        QFile unitAfterResume (Systemd::unitPath ());
+        QFile unitAfterResume (EngineUnit::unitPath ());
         QVERIFY (unitAfterResume.open (QIODevice::ReadOnly));
         QVERIFY (QString::fromUtf8 (unitAfterResume.readAll ()).contains ("--bg " + m_target));
     }
