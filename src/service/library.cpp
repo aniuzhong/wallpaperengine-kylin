@@ -56,10 +56,16 @@ QList<WallpaperEntry> scanLibrary (const QString& workshopDir) {
         entry.type = project.value ("type").toString ("unknown");
         entry.size = humanizeSize (directorySize (dirPath));
 
+        // the project declares its own preview file — authors ship gif, jpg
+        // or png; preview.jpg is only the conventional fallback
+        QString previewName = project.value ("preview").toString ();
+        if (previewName.isEmpty ())
+            previewName = "preview.jpg";
+
         // decode at display size and center-crop to exactly 16:9, so grid
         // tile and detail panel distort nothing regardless of the source
         // aspect ratio
-        QImageReader reader (dirPath + "/preview.jpg");
+        QImageReader reader (dirPath + "/" + previewName);
         const QSize target (kPreviewW, kPreviewH);
         reader.setScaledSize (target.scaled (target.width (), target.height (), Qt::KeepAspectRatioByExpanding));
         QImage preview = reader.read ();
