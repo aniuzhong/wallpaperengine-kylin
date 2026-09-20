@@ -23,6 +23,17 @@ uint64_t directorySize(const std::string& path) {
     return total;
 }
 
+// Both arguments must already be canonical, which is what makes a plain
+// prefix test a containment test: no ".." component survives
+// canonicalization, so nothing inside |directory| can name a path outside it.
+bool isInside(const std::string& directory, const std::string& path) {
+    if (path.size() <= directory.size())
+        return false;
+    if (path.compare(0, directory.size(), directory) != 0)
+        return false;
+    return directory.back() == '/' || path[directory.size()] == '/';
+}
+
 // case-insensitive lexicographic order — the Qt::CaseInsensitive comparison
 // the library was sorted with
 bool titleLess(const WallpaperEntry& a, const WallpaperEntry& b) {
@@ -71,13 +82,24 @@ std::vector<WallpaperEntry> scanLibrary(const std::string& workshopDir) {
         entry.sizeBytes = directorySize(dirPath);
 
         // the project declares its own preview file — authors ship gif, jpg
-        // or png; preview.jpg is only the conventional fallback
+        // or png; preview.jpg is only the conventional fallback.
+        //
+        // The declared name is untrusted input: workshop content is
+        // downloaded from Steam, so a "preview" of "../../../etc/passwd" — or
+        // a symlink pointing out of the directory — must not become a path a
+        // frontend will happily serve. Only a regular file that resolves
+        // inside the wallpaper's own directory is a preview.
         std::string previewName = "preview.jpg";
         if (auto preview = project.find("preview"); preview != project.end() && preview->is_string())
             previewName = preview->get<std::string>();
-        const std::string previewPath = dirPath + "/" + previewName;
-        if (fs::exists(previewPath))
-            entry.previewPath = previewPath;
+
+        std::error_code dirEc;
+        std::error_code previewEc;
+        const std::string dirCanonical = fs::weakly_canonical(dir.path(), dirEc).string();
+        const std::string previewCanonical = fs::weakly_canonical(dirPath + "/" + previewName, previewEc).string();
+        if (!dirEc && !previewEc && isInside(dirCanonical, previewCanonical) &&
+            fs::is_regular_file(previewCanonical, previewEc))
+            entry.previewPath = previewCanonical;
 
         entries.push_back(std::move(entry));
     }

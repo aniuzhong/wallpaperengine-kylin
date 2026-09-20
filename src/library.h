@@ -11,8 +11,12 @@ struct WallpaperEntry {
     uint64_t sizeBytes;    // on-disk size of the wallpaper directory
 
     // resolved preview file (project.json "preview" field, preview.jpg as
-    // the conventional fallback); empty when the wallpaper ships none. The
-    // frontends decode it — at their own display size, this is metadata only.
+    // the conventional fallback); empty when the wallpaper ships none, or
+    // when the declared name resolves outside the wallpaper's own directory
+    // (the field is untrusted content, so escaping paths and symlinks are
+    // rejected rather than handed to a frontend). Canonical, not the
+    // constructed path. The frontends decode it — at their own display size,
+    // this is metadata only.
     std::string previewPath;
 };
 

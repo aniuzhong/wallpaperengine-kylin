@@ -22,6 +22,36 @@ add_executable (library_test library_test.cpp ../src/library.cpp)
 target_link_libraries (library_test PRIVATE Qt5::Core Qt5::Test nlohmann_json::nlohmann_json)
 add_test (NAME library_test COMMAND library_test)
 
+# T0: JSON projections of service data (pure) — the wire contract the CLI
+# publishes with --json, shared with any other frontend
+add_executable (report_test report_test.cpp ../src/report.cpp)
+target_link_libraries (report_test PRIVATE Qt5::Core Qt5::Test nlohmann_json::nlohmann_json)
+add_test (NAME report_test COMMAND report_test)
+
+# T0: the peony integration's pure half (wallpaper candidate list, shim
+# environment) — integration.cpp keeps only the syscall sequence
+add_executable (peonybuilder_test peonybuilder_test.cpp ../src/peonybuilder.cpp)
+target_link_libraries (peonybuilder_test PRIVATE Qt5::Core Qt5::Test)
+add_test (NAME peonybuilder_test COMMAND peonybuilder_test)
+
+# T0: the local server's security boundary (pure predicates)
+add_executable (uivalidate_test uivalidate_test.cpp ../src/uivalidate.cpp)
+target_link_libraries (uivalidate_test PRIVATE Qt5::Core Qt5::Test)
+add_test (NAME uivalidate_test COMMAND uivalidate_test)
+
+# T0: desktop entry -> browser command line (pure)
+add_executable (uilaunch_test uilaunch_test.cpp ../src/uilaunch.cpp)
+target_link_libraries (uilaunch_test PRIVATE Qt5::Core Qt5::Test)
+add_test (NAME uilaunch_test COMMAND uilaunch_test)
+
+# smoke: the browser frontend's server, started for real and driven over a
+# socket. Qt-free like service_smoke_test — the frontend links no Qt either.
+add_executable (ui_smoke_test ui_smoke_test.cpp)
+target_compile_definitions (ui_smoke_test PRIVATE
+    WALLPAPER_ENGINE_BIN="${CMAKE_BINARY_DIR}/wallpaper-engine")
+add_test (NAME ui_smoke_test COMMAND ui_smoke_test)
+set_tests_properties (ui_smoke_test PROPERTIES TIMEOUT 60)
+
 # smoke: the CLI frontend and the service archive must link and run WITHOUT
 # Qt at all — guards the Qt-free boundary (any Qt include in src/ outside
 # hook/ fails this target's link, since no Qt library is on its link line)

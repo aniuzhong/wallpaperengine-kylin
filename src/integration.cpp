@@ -1,5 +1,6 @@
 #include "integration.h"
 
+#include "peonybuilder.h"
 #include "posix.h"
 #include "systemdunit.h"
 
@@ -58,7 +59,7 @@ std::vector<int64_t> findPeonyPids() {
         std::string cmdline;
         if (!readSmallFile((entry.path() / "cmdline").string(), cmdline))
             continue;
-        if (cmdline.find("peony-qt-desktop") != std::string::npos)
+        if (Integration::isPeonyDesktopCmdline(cmdline))
             pids.push_back(atoll(name.c_str()));
     }
     return pids;
@@ -274,7 +275,7 @@ Status detect() {
     return status;
 }
 
-bool setup(std::string* error) {
+bool setup(lwe::Error* error) {
     // ---- 1. marker wallpaper; accountsservice and gsettings point at it.
     // The shim nullifies the pixmap at load time, so the color is irrelevant
     // (magenta makes an unshimmed desktop obvious instead of silently dark).
@@ -284,8 +285,10 @@ bool setup(std::string* error) {
 
     const std::string marker = markerPath();
     if (!writeMarkerPng(marker)) {
-        if (error)
-            *error = "cannot write marker wallpaper to " + marker;
+        if (error != nullptr) {
+            error->kind = lwe::Error::FileError;
+            error->message = "cannot write marker wallpaper to " + marker;
+        }
         return false;
     }
 
@@ -301,11 +304,7 @@ bool setup(std::string* error) {
     // is what switchBackground() reads on wallpaper changes. Collect every
     // candidate path — the shim matches exact paths, basenames, and anything
     // under the accountsservice store anyway.
-    std::string wallpaperList = marker;
-    if (!normalized.empty() && normalized != marker)
-        wallpaperList = normalized + ":" + wallpaperList;
-    if (!previousBackground.empty() && wallpaperList.find(previousBackground) == std::string::npos)
-        wallpaperList = previousBackground + ":" + wallpaperList;
+    const std::string wallpaperList = buildWallpaperList(marker, normalized, previousBackground);
 
     // ---- 2. stop peony and wait for a real exit; a lingering process holds
     // the single-instance lock and our injected instance would bail out.
@@ -337,20 +336,20 @@ bool setup(std::string* error) {
 
     const std::string shimPath = locateShim();
     if (shimPath.empty()) {
-        if (error)
-            *error = "libpeony-alpha-shim.so not found next to the frontend or in the standard "
-                     "library paths (looked in " + lwe::exeDir() + ")";
+        if (error != nullptr) {
+            error->kind = lwe::Error::FileError;
+            error->message = "libpeony-alpha-shim.so not found next to the frontend or in the standard "
+                             "library paths (looked in " + lwe::exeDir() + ")";
+        }
         return false;
     }
     const std::string logPath = dataDir() + "/peony-shim.log";
     SystemdLayer::Error unitError;
-    std::map<std::string, std::string> peonyEnv;
-    peonyEnv["LD_PRELOAD"] = shimPath;
-    peonyEnv["PEONY_ALPHA_WALLPAPER"] = wallpaperList;
-    peonyEnv["PEONY_ALPHA_LOG"] = logPath;
+    const std::map<std::string, std::string> peonyEnv = buildShimEnvironment(shimPath, wallpaperList, logPath);
     if (!peonyUnit.startTransient({ "/usr/bin/peony-qt-desktop", "-w", "-d" }, peonyEnv, {}, &unitError)) {
-        if (error)
-            *error = "transient launch failed: " + unitError.message;
+        // the typed D-Bus error survives to the caller: kind and error name
+        if (error != nullptr)
+            *error = unitError;
         return false;
     }
 
@@ -361,13 +360,16 @@ bool setup(std::string* error) {
         if (pid == 0)
             continue;
         if (shimMapped(pid)) {
-            if (error)
-                error->clear();
+            if (error != nullptr)
+                *error = {};
             return true;
         }
     }
-    if (error)
-        *error = "peony relaunched but the shim did not map (list: " + wallpaperList + "; log: " + logPath + ")";
+    if (error != nullptr) {
+        error->kind = lwe::Error::Unknown;
+        error->message = "peony relaunched but the shim did not map (list: " + wallpaperList +
+                         "; log: " + logPath + ")";
+    }
     return false;
 }
 

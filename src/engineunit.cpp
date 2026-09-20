@@ -8,10 +8,12 @@
 #include <xcb/xcb.h>
 #include <xcb/randr.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -21,6 +23,52 @@ namespace {
 std::string unitNameFromEnv () {
     static const std::string name = lwe::envOr ("WALLPAPER_ENGINE_UNIT", "linux-wallpaperengine");
     return name;
+}
+
+// The output RandR calls primary, when it is actually driven. Empty when the
+// server has no opinion or the primary is disconnected.
+std::string primaryOutputName (xcb_connection_t* connection, const xcb_screen_t* screen) {
+    if (screen == nullptr)
+        return {};
+    std::string name;
+    xcb_randr_get_output_primary_reply_t* primary = xcb_randr_get_output_primary_reply (
+        connection, xcb_randr_get_output_primary (connection, screen->root), nullptr);
+    if (primary != nullptr) {
+        xcb_randr_get_output_info_reply_t* info = xcb_randr_get_output_info_reply (
+            connection, xcb_randr_get_output_info (connection, primary->output, XCB_CURRENT_TIME), nullptr);
+        // a connected, currently-driven output carries the authoritative name
+        if (info != nullptr && info->crtc != XCB_NONE && info->name_len > 0)
+            name.assign (reinterpret_cast<const char*> (xcb_randr_get_output_info_name (info)), info->name_len);
+        free (info);
+        free (primary);
+    }
+    return name;
+}
+
+// Every output with a crtc: an unconnected connector has none, and the
+// engine cannot render where there is no crtc.
+std::vector<std::string> drivenOutputs (xcb_connection_t* connection, const xcb_screen_t* screen) {
+    std::vector<std::string> names;
+    if (screen == nullptr)
+        return names;
+
+    xcb_randr_get_screen_resources_current_reply_t* resources = xcb_randr_get_screen_resources_current_reply (
+        connection, xcb_randr_get_screen_resources_current (connection, screen->root), nullptr);
+    if (resources == nullptr)
+        return names;
+
+    const xcb_randr_output_t* outputs = xcb_randr_get_screen_resources_current_outputs (resources);
+    const int count = xcb_randr_get_screen_resources_current_outputs_length (resources);
+    for (int i = 0; i < count; i++) {
+        xcb_randr_get_output_info_reply_t* info = xcb_randr_get_output_info_reply (
+            connection, xcb_randr_get_output_info (connection, outputs[i], XCB_CURRENT_TIME), nullptr);
+        if (info != nullptr && info->crtc != XCB_NONE && info->name_len > 0)
+            names.push_back (std::string (
+                reinterpret_cast<const char*> (xcb_randr_get_output_info_name (info)), info->name_len));
+        free (info);
+    }
+    free (resources);
+    return names;
 }
 
 } // namespace
@@ -109,53 +157,60 @@ std::map<std::string, std::string> unitBackgrounds () {
     return result;
 }
 
-bool writeUnitFile (const Config& config) {
+bool writeUnitFile (const Config& config, lwe::Error* error) {
     const std::string path = unitPath ();
     std::error_code ec;
     fs::create_directories (fs::path (path).parent_path (), ec);
-    std::ofstream file (path, std::ios::trunc);
-    if (!file.is_open ())
-        return false;
-    file << unitFileContent (config);
-    return file.good ();
+    // atomic like the config: systemd must never read a half-written unit
+    return lwe::writeFileAtomic (path, unitFileContent (config), error);
 }
 
 // every lifecycle operation goes through the typed sd-bus layer — the
 // manager is addressed directly on the session bus, no systemctl subprocesses
-bool daemonReload () {
-    SystemdLayer::Error error;
-    SystemdLayer::daemonReload (&error);
-    return error.kind == SystemdLayer::Error::NoError;
+bool daemonReload (lwe::Error* error) {
+    lwe::Error local;
+    SystemdLayer::daemonReload (&local);
+    if (error != nullptr)
+        *error = local;
+    return local.ok ();
 }
 
-bool startUnit () {
+bool startUnit (lwe::Error* error) {
     SystemdLayer::SystemdUnit unit (unitNameFromEnv ());
-    SystemdLayer::Error error;
-    unit.start (&error);
-    return error.kind == SystemdLayer::Error::NoError;
+    lwe::Error local;
+    unit.start (&local);
+    if (error != nullptr)
+        *error = local;
+    return local.ok ();
 }
 
-bool restartUnit () {
+bool restartUnit (lwe::Error* error) {
     SystemdLayer::SystemdUnit unit (unitNameFromEnv ());
-    SystemdLayer::Error error;
-    unit.restart (&error);
-    return error.kind == SystemdLayer::Error::NoError;
+    lwe::Error local;
+    unit.restart (&local);
+    if (error != nullptr)
+        *error = local;
+    return local.ok ();
 }
 
-bool stopUnit () {
+bool stopUnit (lwe::Error* error) {
     SystemdLayer::SystemdUnit unit (unitNameFromEnv ());
-    SystemdLayer::Error error;
-    unit.stop (&error);
+    lwe::Error local;
+    unit.stop (&local);
     // stop/reset-failed on a unit that was never loaded already has the
     // desired end state: systemd reports NoSuchUnit ("not loaded",
     // systemctl's old exit code 5). Treat it as success — keeps the CLI
     // idempotent for scripting.
-    return SystemdLayer::tolerated (error);
+    if (SystemdLayer::tolerated (local))
+        local = {};
+    if (error != nullptr)
+        *error = local;
+    return local.ok ();
 }
 
-std::string unitState () {
+std::string unitState (lwe::Error* error) {
     SystemdLayer::SystemdUnit unit (unitNameFromEnv ());
-    return unit.activeState ();
+    return unit.activeState (error);
 }
 
 std::string fallbackScreenName () {
@@ -170,35 +225,63 @@ std::string fallbackScreenName () {
         return name;
     }
 
-    const xcb_screen_t* screen = xcb_setup_roots_iterator (xcb_get_setup (connection)).data;
-    if (screen != nullptr) {
-        xcb_randr_get_output_primary_reply_t* primary = xcb_randr_get_output_primary_reply (
-            connection, xcb_randr_get_output_primary (connection, screen->root), nullptr);
-        if (primary != nullptr) {
-            xcb_randr_get_output_info_reply_t* info = xcb_randr_get_output_info_reply (
-                connection, xcb_randr_get_output_info (connection, primary->output, XCB_CURRENT_TIME), nullptr);
-            // a connected, currently-driven output carries the authoritative name
-            if (info != nullptr && info->crtc != XCB_NONE && info->name_len > 0)
-                name.assign (reinterpret_cast<const char*> (xcb_randr_get_output_info_name (info)), info->name_len);
-            free (info);
-            free (primary);
-        }
-    }
+    const std::string primary =
+        primaryOutputName (connection, xcb_setup_roots_iterator (xcb_get_setup (connection)).data);
+    if (!primary.empty ())
+        name = primary;
     xcb_disconnect (connection);
     return name;
 }
 
-void assignScreen (Config& config, const std::string& wallpaperId) {
-    if (config.screens.empty ())
-        config.screens[fallbackScreenName ()] = wallpaperId;
-    else
-        config.screens.begin ()->second = wallpaperId; // single-screen v1
+std::vector<std::string> screenNames () {
+    xcb_connection_t* connection = xcb_connect (nullptr, nullptr);
+    if (xcb_connection_has_error (connection)) {
+        xcb_disconnect (connection);
+        return { "DP-0" };
+    }
+
+    const xcb_screen_t* screen = xcb_setup_roots_iterator (xcb_get_setup (connection)).data;
+    std::vector<std::string> names = drivenOutputs (connection, screen);
+    const std::string primary = primaryOutputName (connection, screen);
+    xcb_disconnect (connection);
+
+    if (names.empty ())
+        return { "DP-0" };
+    // primary first: a caller that just takes front() gets the desktop's own
+    // idea of the main screen, which is also what defaultScreenFor prefers
+    const auto it = std::find (names.begin (), names.end (), primary);
+    if (it != names.end ())
+        std::rotate (names.begin (), it, it + 1);
+    return names;
 }
 
-bool applyConfig (const Config& config) {
+std::string defaultScreenFor (const Config& config, const std::string& primaryOutput) {
+    if (config.screens.count (primaryOutput) != 0)
+        return primaryOutput; // the desktop already drives it
+    if (config.screens.size () == 1)
+        return config.screens.begin ()->first; // the only candidate there is
+    return primaryOutput; // fresh config, or a multi-screen one without the primary
+}
+
+Config assignScreen (Config config, const std::string& screen, const std::string& wallpaperId) {
+    // a screens[""] entry would be unmatchable by the engine: leave the
+    // config untouched rather than write one
+    if (screen.empty () || wallpaperId.empty ())
+        return config;
+    config.screens[screen] = wallpaperId;
+    return config;
+}
+
+bool applyConfig (const Config& config, lwe::Error* error) {
     // the one apply chain: persist the draft, project it into the unit file
-    // the manager runs, reload, restart
-    return config.save () && writeUnitFile (config) && daemonReload () && restartUnit ();
+    // the manager runs, reload, restart. The first failing step is the one
+    // |error| describes.
+    lwe::Error local;
+    const bool ok = config.save (&local) && writeUnitFile (config, &local) && daemonReload (&local) &&
+                    restartUnit (&local);
+    if (error != nullptr)
+        *error = ok ? lwe::Error {} : local;
+    return ok;
 }
 
 } // namespace EngineUnit

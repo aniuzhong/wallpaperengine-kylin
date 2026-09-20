@@ -1,5 +1,7 @@
 #pragma once
 
+#include "error.h"
+
 #include <cstdint>
 #include <string>
 
@@ -39,7 +41,9 @@ std::string locateShim ();
 //      shim environment (Restart=on-failure keeps it injected across
 //      crashes)
 //   4. verify: process alive, shim mapped
-// Returns false with details in |error| on failure.
-bool setup(std::string* error);
+// Returns false with the failing step described in |error|: a D-Bus failure
+// keeps its kind and error name, a missing shim or marker file reports
+// FileError, a launch that did not take reports Unknown.
+bool setup(lwe::Error* error = nullptr);
 
 } // namespace Integration

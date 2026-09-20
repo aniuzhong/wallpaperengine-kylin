@@ -65,7 +65,7 @@ std::string Config::configPath() {
     return configDir() + "/config.json";
 }
 
-Config Config::load() {
+Config Config::load(lwe::Error* error) {
     Config config;
 
     // Resolve defaults from standard install locations; the config file
@@ -93,18 +93,37 @@ Config Config::load() {
     config.assetsDir = firstExisting(assetsCandidates, "");
     config.workshopDir = firstExisting(workshopCandidates, workshopCandidates.front());
 
+    std::error_code existsEc;
     std::ifstream file(configPath());
-    if (!file.is_open())
+    if (!file.is_open()) {
+        // a config that was never written is the normal first-run case; one
+        // that exists and cannot be opened is a real failure
+        if (error != nullptr && fs::exists(configPath(), existsEc)) {
+            error->kind = lwe::Error::FileError;
+            error->message = "cannot read " + configPath();
+        }
         return config;
+    }
 
     json obj;
     try {
         file >> obj;
-    } catch (...) {
-        return config; // corrupt file: the freshly resolved defaults survive
-    }
-    if (!obj.is_object())
+    } catch (const std::exception& parseError) {
+        // corrupt file: the freshly resolved defaults survive, but the
+        // caller now learns why it is looking at defaults
+        if (error != nullptr) {
+            error->kind = lwe::Error::CorruptConfig;
+            error->message = configPath() + ": " + parseError.what();
+        }
         return config;
+    }
+    if (!obj.is_object()) {
+        if (error != nullptr) {
+            error->kind = lwe::Error::CorruptConfig;
+            error->message = configPath() + ": not a JSON object";
+        }
+        return config;
+    }
 
     config.enginePath = getStr(obj, "enginePath", config.enginePath);
     config.assetsDir = getStr(obj, "assetsDir", config.assetsDir);
@@ -136,7 +155,30 @@ Config Config::load() {
     return config;
 }
 
-bool Config::save() const {
+Config Config::patched(const nlohmann::json& patch) const {
+    if (!patch.is_object())
+        return *this;
+
+    Config updated = *this;
+    updated.enginePath = getStr(patch, "enginePath", updated.enginePath);
+    updated.assetsDir = getStr(patch, "assetsDir", updated.assetsDir);
+    updated.workshopDir = getStr(patch, "workshopDir", updated.workshopDir);
+    updated.display = getStr(patch, "display", updated.display);
+    updated.scaling = getStr(patch, "scaling", updated.scaling);
+    updated.clamp = getStr(patch, "clamp", updated.clamp);
+    updated.fps = getInt(patch, "fps", updated.fps);
+    updated.volume = getInt(patch, "volume", updated.volume);
+    updated.silent = getBool(patch, "silent", updated.silent);
+    updated.fullscreenPause = getBool(patch, "fullscreenPause", updated.fullscreenPause);
+    updated.automute = getBool(patch, "automute", updated.automute);
+    updated.audioProcessing = getBool(patch, "audioProcessing", updated.audioProcessing);
+    updated.disableParticles = getBool(patch, "disableParticles", updated.disableParticles);
+    updated.disableMouse = getBool(patch, "disableMouse", updated.disableMouse);
+    updated.disableParallax = getBool(patch, "disableParallax", updated.disableParallax);
+    return updated;
+}
+
+bool Config::save(lwe::Error* error) const {
     std::error_code ec;
     fs::create_directories(configDir(), ec);
 
@@ -167,9 +209,7 @@ bool Config::save() const {
     }
     obj["properties"] = properties;
 
-    std::ofstream file(configPath(), std::ios::trunc);
-    if (!file.is_open())
-        return false;
-    file << obj.dump(2) << "\n"; // indented, matching QJsonDocument::Indented
-    return file.good();
+    // indented, matching QJsonDocument::Indented; replaced atomically so a
+    // concurrent reader (or a crash) never sees a half-written config
+    return lwe::writeFileAtomic(configPath(), obj.dump(2) + "\n", error);
 }

@@ -15,7 +15,8 @@ private slots:
     void initTestCase () {
         QTemporaryDir* dir = new QTemporaryDir (); // freed at process exit: spans the whole run
         QVERIFY (dir->isValid ());
-        qputenv ("XDG_CONFIG_HOME", dir->path ().toUtf8 ());
+        m_configHome = dir->path ();
+        qputenv ("XDG_CONFIG_HOME", m_configHome.toUtf8 ());
     }
 
     void saveCreatesConfigFile () {
@@ -74,6 +75,60 @@ private slots:
         QCOMPARE (fresh.fps, 30);
         QVERIFY (fresh.silent);
     }
+
+    void loadOnMissingFileIsNotAnError () {
+        // the first-run case: defaults are the answer, not a failure
+        std::filesystem::remove (Config::configPath ());
+        lwe::Error error;
+        Config::load (&error);
+        QCOMPARE (error.kind, lwe::Error::NoError);
+    }
+
+    void loadOnCorruptFileReportsItButKeepsDefaults () {
+        Config c;
+        c.fps = 77;
+        QVERIFY (c.save ());
+        QFile f (QString::fromStdString (Config::configPath ()));
+        QVERIFY (f.open (QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write ("{ this is not json");
+        f.close ();
+
+        lwe::Error error;
+        const Config read = Config::load (&error);
+        QCOMPARE (error.kind, lwe::Error::CorruptConfig);
+        QVERIFY (!error.message.empty ());
+        QCOMPARE (read.fps, 30); // defaults survive, but now they are explained
+    }
+
+    void saveIsAtomicAndLeavesNoTempFile () {
+        Config c;
+        QVERIFY (c.save ());
+        QVERIFY (!std::filesystem::exists (Config::configPath () + ".tmp"));
+    }
+
+    void failedSaveReportsFileError () {
+        // a config path whose parent is a file, not a directory: the write
+        // cannot succeed, and the caller learns why instead of getting a
+        // bare false
+        const QByteArray blocked = (m_configHome + "/blocked").toUtf8 (); // inside the temp dir
+        QFile blocker (QString::fromUtf8 (blocked));
+        QVERIFY (blocker.open (QIODevice::WriteOnly));
+        blocker.write ("not a directory");
+        blocker.close ();
+
+        qputenv ("XDG_CONFIG_HOME", blocked + "/sub");
+        Config c;
+        lwe::Error error;
+        const bool saved = c.save (&error);
+        qputenv ("XDG_CONFIG_HOME", m_configHome.toUtf8 ()); // restore before asserting
+
+        QVERIFY (!saved);
+        QCOMPARE (error.kind, lwe::Error::FileError);
+        QVERIFY (!error.message.empty ());
+    }
+
+private:
+    QString m_configHome;
 };
 
 QTEST_MAIN (ConfigTest)

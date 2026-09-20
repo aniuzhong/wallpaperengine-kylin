@@ -69,6 +69,7 @@ ENV GIT_TERMINAL_PROMPT=0 \
 
 COPY CMakeLists.txt /int/CMakeLists.txt
 COPY src/ /int/src/
+COPY cmake/ /int/cmake/
 COPY patches/ /int/patches/
 
 # One cmake entry for everything: engine (seeded tree) + controller + shim.
@@ -98,6 +99,8 @@ FROM builder AS deb
 ARG DEB_VERSION=0.1.0
 
 COPY packaging/deb /tmp/deb-control
+# the launcher's icon, taken from the same file the repo ships as its logo
+COPY doc/wallpaperengine-kylin.png /tmp/deb-control/wallpaper-engine.png
 RUN mkdir -p /deb/DEBIAN /deb/usr/share/doc/linux-wallpaperengine-kylin \
  && cp /tmp/deb-control/control /deb/DEBIAN/control \
  && sed -i "s/@VERSION@/${DEB_VERSION}/" /deb/DEBIAN/control \
@@ -107,6 +110,9 @@ RUN mkdir -p /deb/DEBIAN /deb/usr/share/doc/linux-wallpaperengine-kylin \
         fi; \
     done \
  && cp /tmp/deb-control/copyright /deb/usr/share/doc/linux-wallpaperengine-kylin/copyright \
+ && mkdir -p /deb/usr/share/applications /deb/usr/share/pixmaps \
+ && cp /tmp/deb-control/wallpaper-engine.desktop /deb/usr/share/applications/ \
+ && cp /tmp/deb-control/wallpaper-engine.png /deb/usr/share/pixmaps/wallpaper-engine.png \
  && echo "Installed-Size: $(du -sk --apparent-size /deb | cut -f1)" >> /deb/DEBIAN/control \
  && dpkg-deb --build --root-owner-group /deb /pkg.deb
 

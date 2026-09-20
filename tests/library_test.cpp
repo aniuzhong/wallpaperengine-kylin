@@ -118,6 +118,35 @@ private slots:
         QVERIFY (scanLibrary ((m_workshop->path () + "/does-not-exist").toStdString ()).empty ());
     }
 
+    void scan_rejectsPreviewEscapingTheWallpaperDir () {
+        // project.json is downloaded content: a declared preview of
+        // "../../../../etc/passwd" must not become a path a frontend serves
+        const std::string dir = (m_workshop->path () + "/entry-escape").toStdString ();
+        QVERIFY (fs::create_directories (dir));
+        put (dir + "/project.json", R"({"title": "Escape", "preview": "../../../../etc/passwd"})");
+
+        const std::vector<WallpaperEntry> entries = scanLibrary (m_workshop->path ().toStdString ());
+        QCOMPARE (entries.size (), size_t (1));
+        QVERIFY (entries.front ().previewPath.empty ());
+    }
+
+    void scan_rejectsPreviewSymlinkedOutOfTheWallpaperDir () {
+        // a symlink inside the wallpaper pointing elsewhere in the workshop
+        // root resolves outside the entry: canonicalization has to catch it
+        const std::string outside = (m_workshop->path () + "/outside.png").toStdString ();
+        put (outside, std::string (8, 'o'));
+        const std::string dir = (m_workshop->path () + "/entry-link").toStdString ();
+        QVERIFY (fs::create_directories (dir));
+        put (dir + "/project.json", R"({"title": "Link", "preview": "cover.png"})");
+        std::error_code ec;
+        fs::create_symlink (outside, dir + "/cover.png", ec);
+        QVERIFY (!ec);
+
+        const std::vector<WallpaperEntry> entries = scanLibrary (m_workshop->path ().toStdString ());
+        QCOMPARE (entries.size (), size_t (1));
+        QVERIFY (entries.front ().previewPath.empty ());
+    }
+
 private:
     std::unique_ptr<QTemporaryDir> m_workshop;
 };

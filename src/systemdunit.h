@@ -1,5 +1,7 @@
 #pragma once
 
+#include "error.h"
+
 #include <cstdint>
 #include <map>
 #include <string>
@@ -8,14 +10,9 @@
 
 namespace SystemdLayer {
 
-// Typed error for every failing operation on this layer. D-Bus error names
-// are preserved for diagnostics; kind is what callers branch on.
-struct Error {
-    enum Kind { NoError, BusUnreachable, NoSuchUnit, JobFailed, InvalidInput, Unknown };
-    Kind kind = NoError;
-    std::string dbusName;
-    std::string message;
-};
+// The one project-wide error type (src/error.h), re-exported here so this
+// layer's signatures keep reading as they always have.
+using Error = lwe::Error;
 
 // Value of an extra transient unit property: marshaled to its natural D-Bus
 // type (string / boolean / 64-bit signed / double).

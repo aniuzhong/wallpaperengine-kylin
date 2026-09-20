@@ -2,26 +2,23 @@
 
 #include "argvbuilder.h"
 #include "config.h"
+#include "engineprocess.h"
 #include "engineunit.h"
 #include "integration.h"
 #include "library.h"
+#include "report.h"
 
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
-#include <cerrno>
-#include <csignal>
 #include <cstdio>
-#include <ctime>
+#include <cstring>
 #include <map>
 #include <random>
 #include <string>
 #include <vector>
 
 #include <filesystem>
-#include <poll.h>
-#include <sys/wait.h>
-#include <unistd.h>
 
 namespace fs = std::filesystem;
 
@@ -43,18 +40,32 @@ void printUsage () {
         "  status [--json]             unit state + current wallpaper\n"
         "  list [--json]               wallpapers available in the workshop directory\n"
         "  switch <id|--random>        switch the wallpaper and persist it\n"
-        "                             [--screen S] targets one screen (default: first)\n"
+        "                             [--screen S] targets one screen\n"
+        "                             (default: the primary screen)\n"
         "  pause / resume              alias of stop / start\n"
         "  properties <id>             list the engine properties of a wallpaper\n"
         "  setup-integration           configure peony injection for a visible desktop\n"
         "  doctor                      dump diagnostics for bug reports\n"
-        "  selftest                    config load/save self-test\n",
+        "  selftest                    config load/save self-test\n"
+        "  ui [--port N] [--no-open]   serve the browser frontend on 127.0.0.1\n",
         stdout);
+}
+
+// The one failure exit: --json consumers get the structured projection,
+// humans get "<what>: <why>". Every command funnels through here so a
+// reason is never dropped on the floor.
+int fail (bool json, const std::string& what, const lwe::Error& error) {
+    if (json)
+        std::printf ("%s\n", Report::error (error).dump ().c_str ());
+    else
+        std::printf ("%s: %s\n", what.c_str (), lwe::describe (error).c_str ());
+    return EXIT_FAIL;
 }
 
 int cmdStatus (bool json) {
     const Config config = Config::load ();
-    const std::string state = EngineUnit::unitState ();
+    lwe::Error busError;
+    const std::string state = EngineUnit::unitState (&busError);
     // the unit file is what systemd actually runs; config.json is the
     // editor's draft. Prefer the unit's own ExecStart so status tells the
     // truth even after manual unit edits; fall back to config when the
@@ -62,25 +73,20 @@ int cmdStatus (bool json) {
     std::map<std::string, std::string> screens = EngineUnit::unitBackgrounds ();
     if (screens.empty ())
         screens = config.screens;
-    if (!json) {
-        std::printf ("unit: %s (%s)\n", EngineUnit::unitName ().c_str (), state.c_str ());
-        for (const auto& [screen, wallpaper] : screens)
-            std::printf ("screen %s: %s\n", screen.c_str (), wallpaper.c_str ());
-        std::printf ("engine: %s\n", config.enginePath.c_str ());
+
+    if (json) {
+        const nlohmann::json root =
+            Report::status (EngineUnit::unitName (), state, screens, config.enginePath);
+        std::printf ("%s\n", root.dump ().c_str ());
         return EXIT_OK;
     }
-    nlohmann::json screensJson = nlohmann::json::object ();
-    for (const auto& [screen, wallpaper] : screens)
-        screensJson[screen] = wallpaper;
-    nlohmann::json status;
-    status["unit"] = EngineUnit::unitName ();
-    status["state"] = state;
-    status["screens"] = std::move (screensJson);
-    status["enginePath"] = config.enginePath;
 
-    nlohmann::json root;
-    root["status"] = std::move (status);
-    std::printf ("%s\n", root.dump ().c_str ());
+    std::printf ("unit: %s (%s)\n", EngineUnit::unitName ().c_str (), state.c_str ());
+    for (const auto& [screen, wallpaper] : screens)
+        std::printf ("screen %s: %s\n", screen.c_str (), wallpaper.c_str ());
+    std::printf ("engine: %s\n", config.enginePath.c_str ());
+    if (!busError.ok ())
+        std::printf ("bus: %s\n", lwe::describe (busError).c_str ());
     return EXIT_OK;
 }
 
@@ -88,16 +94,7 @@ int cmdList (bool json) {
     const Config config = Config::load ();
     const std::vector<WallpaperEntry> entries = scanLibrary (config.workshopDir);
     if (json) {
-        nlohmann::json arr = nlohmann::json::array ();
-        for (const WallpaperEntry& e : entries) {
-            nlohmann::json o;
-            o["id"] = e.id;
-            o["title"] = e.title;
-            o["type"] = e.type;
-            arr.push_back (std::move (o));
-        }
-        // consumers parse the wrapped shape; do not unwrap
-        std::printf ("%s\n", nlohmann::json::array ({ std::move (arr) }).dump ().c_str ());
+        std::printf ("%s\n", Report::library (entries).dump ().c_str ());
         return EXIT_OK;
     }
     for (const WallpaperEntry& e : entries)
@@ -105,14 +102,20 @@ int cmdList (bool json) {
     return EXIT_OK;
 }
 
-int cmdSwitch (const std::vector<std::string>& args) {
+int cmdSwitch (const std::vector<std::string>& args, bool json) {
+    constexpr const char* kScreenFlag = "--screen=";
+
     std::string id;
+    std::string requestedScreen;
     bool random = false;
-    for (const std::string& a : args) {
+    for (size_t i = 0; i < args.size (); i++) {
+        const std::string& a = args[i];
         if (a == "--random")
             random = true;
-        else if (a == "--screen" || a.rfind ("--screen=", 0) == 0)
-            continue; // multi-screen selection lands with the UI iteration
+        else if (a == "--screen" && i + 1 < args.size ())
+            requestedScreen = args[++i];
+        else if (a.rfind (kScreenFlag, 0) == 0)
+            requestedScreen = a.substr (std::strlen (kScreenFlag));
         else if (!a.empty () && a[0] != '-')
             id = a;
     }
@@ -137,135 +140,67 @@ int cmdSwitch (const std::vector<std::string>& args) {
         return EXIT_FAIL;
     }
 
-    Config updated = config;
-    EngineUnit::assignScreen (updated, id);
-
-    if (!EngineUnit::applyConfig (updated)) {
-        std::printf ("switch: failed to (re)start the engine unit\n");
+    // The primary output is resolved here, at the boundary: the selection
+    // and the config edit below are pure functions of it. Asking RandR is
+    // only necessary when the caller did not name a screen.
+    const std::string screen =
+        requestedScreen.empty ()
+            ? EngineUnit::defaultScreenFor (config, EngineUnit::fallbackScreenName ())
+            : requestedScreen;
+    if (screen.empty ()) {
+        std::printf ("switch: no screen to target — pass --screen <name>\n");
         return EXIT_FAIL;
     }
+
+    lwe::Error error;
+    const Config updated = EngineUnit::assignScreen (config, screen, id);
+    if (!EngineUnit::applyConfig (updated, &error))
+        return fail (json, "switch", error);
+
     std::printf ("switched: %s\n", id.c_str ());
     return EXIT_OK;
 }
 
-// Run the engine as a child with stdout/stderr streamed to ours, bounded by
-// |timeoutMs| (SIGKILL past the deadline). Returns the child exit code, or
-// -1 when the child could not be spawned or was killed (|=timedOut| tells
-// which); 127 means the engine path itself was not executable.
-int runEngineCaptured (const std::string& enginePath, const std::vector<std::string>& args,
-                       long timeoutMs, bool* timedOut) {
-    *timedOut = false;
-    int outPipe[2] = {-1, -1};
-    int errPipe[2] = {-1, -1};
-    if (pipe (outPipe) != 0)
-        return -1;
-    if (pipe (errPipe) != 0) {
-        close (outPipe[0]);
-        close (outPipe[1]);
-        return -1;
-    }
-
-    const pid_t pid = fork ();
-    if (pid < 0) {
-        for (int fd : {outPipe[0], outPipe[1], errPipe[0], errPipe[1]})
-            close (fd);
-        return -1;
-    }
-    if (pid == 0) {
-        dup2 (outPipe[1], STDOUT_FILENO);
-        dup2 (errPipe[1], STDERR_FILENO);
-        for (int fd : {outPipe[0], outPipe[1], errPipe[0], errPipe[1]})
-            close (fd);
-        std::vector<char*> childArgs;
-        childArgs.push_back (const_cast<char*> (enginePath.c_str ()));
-        for (const std::string& arg : args)
-            childArgs.push_back (const_cast<char*> (arg.c_str ()));
-        childArgs.push_back (nullptr);
-        execvp (enginePath.c_str (), childArgs.data ());
-        _exit (127);
-    }
-
-    close (outPipe[1]);
-    close (errPipe[1]);
-    const long long deadline = [] {
-        timespec now;
-        clock_gettime (CLOCK_MONOTONIC, &now);
-        return static_cast<long long> (now.tv_sec) * 1000 + now.tv_nsec / 1000000;
-    } () + timeoutMs;
-
-    int readers[2] = {outPipe[0], errPipe[0]};
-    int openReaders = 2;
-    char buffer[4096];
-    while (openReaders > 0) {
-        timespec now;
-        clock_gettime (CLOCK_MONOTONIC, &now);
-        const long long remaining = deadline - (static_cast<long long> (now.tv_sec) * 1000 + now.tv_nsec / 1000000);
-        if (remaining <= 0) {
-            *timedOut = true;
-            break;
-        }
-        pollfd fds[2] = {{readers[0], POLLIN, 0}, {readers[1], POLLIN, 0}};
-        const int ready = poll (fds, 2, static_cast<int> (remaining));
-        if (ready < 0) {
-            if (errno == EINTR)
-                continue;
-            break;
-        }
-        for (int i = 0; i < 2; i++) {
-            if ((fds[i].revents & (POLLIN | POLLHUP)) == 0)
-                continue;
-            const ssize_t n = read (readers[i], buffer, sizeof (buffer));
-            if (n <= 0) {
-                close (readers[i]);
-                readers[i] = -1;
-                openReaders--;
-                continue;
-            }
-            std::fwrite (buffer, 1, static_cast<size_t> (n), i == 0 ? stdout : stderr);
-        }
-    }
-    for (int fd : readers)
-        if (fd != -1)
-            close (fd);
-
-    if (*timedOut)
-        kill (pid, SIGKILL);
-    int status = 0;
-    waitpid (pid, &status, 0);
-    if (*timedOut)
-        return -1;
-    return WIFEXITED (status) ? WEXITSTATUS (status) : -1;
-}
-
 int cmdProperties (const std::string& id) {
     const Config config = Config::load ();
+    std::string output;
     bool timedOut = false;
-    const int exitCode = runEngineCaptured (
-        config.enginePath, {"--list-properties", "--assets-dir", config.assetsDir, id}, 30000, &timedOut);
-    if (timedOut || exitCode == -1 || exitCode == 127) {
-        std::printf ("properties: engine did not finish in time\n");
-        return EXIT_FAIL;
+    const int exitCode = EngineProcess::runCaptured (
+        config.enginePath, {"--list-properties", "--assets-dir", config.assetsDir, id}, 30000, &output,
+        &timedOut);
+    // the engine's own listing, verbatim: buffered rather than streamed so a
+    // frontend can publish it as one value
+    if (!output.empty ())
+        std::fwrite (output.data (), 1, output.size (), stdout);
+
+    if (EngineProcess::didNotRun (exitCode)) {
+        lwe::Error error;
+        error.kind = lwe::Error::Unknown;
+        error.message = timedOut ? "the engine did not finish in time"
+                                 : "the engine at " + config.enginePath + " could not be run";
+        return fail (false, "properties", error);
     }
     return exitCode;
 }
 
-int cmdSetupIntegration () {
-    std::string error;
-    const bool ok = Integration::setup (&error);
-    if (ok) {
-        std::printf ("integration configured: peony injected, desktop transparent\n");
-        return EXIT_OK;
-    }
-    std::printf ("integration failed: %s\n", error.c_str ());
-    return EXIT_FAIL;
+int cmdSetupIntegration (bool json) {
+    lwe::Error error;
+    if (!Integration::setup (&error))
+        return fail (json, "integration failed", error);
+    std::printf ("integration configured: peony injected, desktop transparent\n");
+    return EXIT_OK;
 }
 
 int cmdDoctor () {
-    const Config config = Config::load ();
+    lwe::Error configError;
+    const Config config = Config::load (&configError);
     std::error_code ec;
     const std::string configPath = Config::configPath ();
     std::printf ("config: %s (%s)\n", configPath.c_str (),
                  fs::exists (configPath, ec) ? "present" : "missing");
+    // "present" and "readable" are different answers: say which one it is
+    if (!configError.ok ())
+        std::printf ("config problem: %s\n", lwe::describe (configError).c_str ());
     std::printf ("engine binary: %s (%s)\n", config.enginePath.c_str (),
                  fs::exists (config.enginePath, ec) ? "present" : "MISSING");
     std::printf ("assets dir: %s (%s)\n", config.assetsDir.c_str (),
@@ -293,7 +228,10 @@ int cmdSelftest () {
     std::printf ("engine: %s\n", config.enginePath.c_str ());
     std::printf ("screens: %d, fps: %d, silent: %s\n", static_cast<int> (config.screens.size ()), config.fps,
                  config.silent ? "true" : "false");
-    return config.save () ? EXIT_OK : EXIT_FAIL;
+    lwe::Error error;
+    if (!config.save (&error))
+        return fail (false, "selftest", error);
+    return EXIT_OK;
 }
 
 } // namespace
@@ -309,24 +247,30 @@ int runCli (const std::vector<std::string>& args) {
     const bool json = std::find (rest.begin (), rest.end (), "--json") != rest.end ();
 
     if (command == "start" || command == "resume") {
-        if (!EngineUnit::writeUnitFile (Config::load ()) || !EngineUnit::daemonReload ())
-            return EXIT_FAIL;
-        return EngineUnit::startUnit () ? EXIT_OK : EXIT_FAIL;
+        lwe::Error error;
+        if (!EngineUnit::writeUnitFile (Config::load (), &error) || !EngineUnit::daemonReload (&error) ||
+            !EngineUnit::startUnit (&error))
+            return fail (json, command, error);
+        return EXIT_OK;
     }
-    if (command == "stop" || command == "pause")
-        return EngineUnit::stopUnit () ? EXIT_OK : EXIT_FAIL;
-    if (command == "restart")
-        return EngineUnit::restartUnit () ? EXIT_OK : EXIT_FAIL;
+    if (command == "stop" || command == "pause") {
+        lwe::Error error;
+        return EngineUnit::stopUnit (&error) ? EXIT_OK : fail (json, command, error);
+    }
+    if (command == "restart") {
+        lwe::Error error;
+        return EngineUnit::restartUnit (&error) ? EXIT_OK : fail (json, command, error);
+    }
     if (command == "status")
         return cmdStatus (json);
     if (command == "list")
         return cmdList (json);
     if (command == "switch")
-        return cmdSwitch (rest);
+        return cmdSwitch (rest, json);
     if (command == "properties")
         return rest.empty () ? EXIT_USAGE : cmdProperties (rest.front ());
     if (command == "setup-integration")
-        return cmdSetupIntegration ();
+        return cmdSetupIntegration (json);
     if (command == "doctor")
         return cmdDoctor ();
     if (command == "selftest" || command == "--selftest")

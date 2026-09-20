@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wallpaper Engine</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="titlebar">
+  <div class="title">Wallpaper Engine <span class="muted">for Kylin</span></div>
+  <div class="status"><span class="dot" id="status-dot"></span><span id="status-text">连接中…</span></div>
+</header>
+
+<nav class="toolbar">
+  <div class="tabs">
+    <button class="tab active" data-tab="installed">已安装</button>
+    <button class="tab" data-tab="displays">显示器</button>
+    <button class="tab" data-tab="settings">设置</button>
+  </div>
+  <div class="tools">
+    <button class="btn" id="btn-integration">桌面集成</button>
+  </div>
+</nav>
+
+<main>
+  <section class="content">
+
+    <div class="filterbar">
+      <div class="search">
+        <input id="search" type="search" placeholder="搜索" autocomplete="off">
+      </div>
+      <button class="btn" id="btn-random">随机</button>
+      <div class="spacer"></div>
+      <label class="sort">排序
+        <select id="sort">
+          <option value="name">名称</option>
+          <option value="size">大小</option>
+          <option value="type">类型</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="panel" id="panel-installed">
+      <div class="grid" id="grid"></div>
+      <p class="empty" id="grid-empty" hidden></p>
+    </div>
+
+    <div class="panel" id="panel-displays" hidden>
+      <div class="rows" id="display-rows"></div>
+    </div>
+
+    <div class="panel" id="panel-settings" hidden>
+      <form class="settings" id="settings-form">
+        <div class="field"><label>引擎路径</label><input name="enginePath" type="text"></div>
+        <div class="field"><label>素材目录</label><input name="assetsDir" type="text"></div>
+        <div class="field"><label>创意工坊目录</label><input name="workshopDir" type="text"></div>
+        <div class="field"><label>帧率</label><input name="fps" type="number" min="1" max="240"></div>
+        <div class="field"><label>音量</label><input name="volume" type="number" min="0" max="100"></div>
+        <div class="field"><label>缩放</label>
+          <select name="scaling">
+            <option value="fill">fill</option>
+            <option value="fit">fit</option>
+            <option value="stretch">stretch</option>
+            <option value="default">default</option>
+          </select>
+        </div>
+        <div class="field"><label>边缘</label>
+          <select name="clamp">
+            <option value="border">border</option>
+            <option value="repeat">repeat</option>
+            <option value="mirror">mirror</option>
+            <option value="default">default</option>
+          </select>
+        </div>
+        <div class="checks">
+          <label><input name="silent" type="checkbox"> 静音</label>
+          <label><input name="fullscreenPause" type="checkbox"> 全屏时暂停</label>
+          <label><input name="automute" type="checkbox"> 其他程序发声时静音</label>
+          <label><input name="disableParticles" type="checkbox"> 禁用粒子</label>
+          <label><input name="disableMouse" type="checkbox"> 禁用鼠标交互</label>
+          <label><input name="disableParallax" type="checkbox"> 禁用视差</label>
+        </div>
+        <div class="actions">
+          <button class="btn primary" type="submit">保存并重启引擎</button>
+        </div>
+      </form>
+    </div>
+
+  </section>
+
+  <aside class="detail" id="detail">
+    <div class="preview" id="preview">
+      <img id="preview-img" alt="" hidden>
+      <video id="preview-video" muted loop playsinline hidden></video>
+      <div class="preview-empty" id="preview-empty">选择一张壁纸</div>
+      <button class="play" id="btn-apply" title="应用" hidden>▶</button>
+    </div>
+
+    <h1 class="detail-title" id="detail-title">未选择</h1>
+    <div class="detail-meta" id="detail-meta"></div>
+    <div class="detail-tags" id="detail-tags"></div>
+
+    <div class="detail-actions">
+      <button class="btn primary block" id="btn-apply-2" disabled>应用到桌面</button>
+      <button class="btn danger block" id="btn-stop">停止壁纸</button>
+    </div>
+
+    <div class="section">属性</div>
+    <div class="properties" id="properties">
+      <button class="btn block" id="btn-properties" disabled>加载引擎属性</button>
+    </div>
+
+    <div class="section">桌面集成</div>
+    <div class="integration" id="integration">检测中…</div>
+
+    <div class="section">屏幕</div>
+    <div class="screens" id="screens"></div>
+  </aside>
+</main>
+
+<footer class="bottombar">
+  <span class="muted" id="footer-info"></span>
+  <div class="spacer"></div>
+  <button class="btn danger" id="btn-quit">退出</button>
+</footer>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="/app.js"></script>
+</body>
+</html>
