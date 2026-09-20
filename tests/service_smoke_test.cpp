@@ -1,12 +1,12 @@
 // Qt-free smoke test of the service archive plus the CLI frontend: links
 // wallpaper_service and the CLI with NO Qt at all (no QtTest, no QtCore)
 // and exercises the pure entry points. Guards the layer's Qt-free boundary
-// — a single Qt include creeping into src/service or src/ui breaks this
+// — a single Qt include creeping into src/ (outside hook/) breaks this
 // link.
-#include "../src/service/argvbuilder.h"
-#include "../src/service/library.h"
-#include "../src/service/systemd/unitbuilder.h"
-#include "../src/ui/cli.h"
+#include "../src/argvbuilder.h"
+#include "../src/library.h"
+#include "../src/unitbuilder.h"
+#include "../src/cli.h"
 
 #include <cstdio>
 #include <string>

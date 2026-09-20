@@ -1,7 +1,7 @@
 // T0 pure-logic tests: Config persistence (JSON roundtrip, isolation).
 // XDG_CONFIG_HOME is pointed at a temp directory in initTestCase so these
 // tests never touch the real ~/.config.
-#include "../src/service/config.h"
+#include "../src/config.h"
 
 #include <QTemporaryDir>
 #include <QtTest>

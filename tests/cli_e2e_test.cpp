@@ -2,8 +2,8 @@
 // manager. Uses the real config but a dedicated test unit name
 // (linux-wallpaperengine-e2e-test) and restores the previous wallpaper selection afterwards,
 // so the user's desktop state is preserved.
-#include "../src/service/config.h"
-#include "../src/service/engineunit.h"
+#include "../src/config.h"
+#include "../src/engineunit.h"
 
 #include <QDBusConnection>
 #include <QProcess>

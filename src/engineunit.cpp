@@ -2,7 +2,7 @@
 
 #include "argvbuilder.h"
 #include "posix.h"
-#include "systemd/unitbuilder.h"
+#include "unitbuilder.h"
 #include "systemdunit.h"
 
 #include <xcb/xcb.h>

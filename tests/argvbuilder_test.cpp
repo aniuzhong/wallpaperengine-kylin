@@ -1,5 +1,5 @@
 // T0 pure-logic tests: Config -> engine argv mapping.
-#include "../src/service/argvbuilder.h"
+#include "../src/argvbuilder.h"
 
 #include <QtTest>
 

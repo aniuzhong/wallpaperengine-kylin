@@ -1,7 +1,7 @@
 // Library scan tests: pure metadata — directories under a temp workshop
 // root, no image decoding involved (the service only resolves preview
 // paths; decoding is a frontend concern).
-#include "../src/service/library.h"
+#include "../src/library.h"
 
 #include <QTemporaryDir>
 #include <QtTest>

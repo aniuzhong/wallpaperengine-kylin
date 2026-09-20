@@ -1,7 +1,7 @@
 // Pure-logic tests for the systemd layer: ExecStart escaping/parsing and
 // transient property decomposition. No bus required — these must pass
 // everywhere.
-#include "../src/service/systemd/unitbuilder.h"
+#include "../src/unitbuilder.h"
 
 #include <QtTest>
 

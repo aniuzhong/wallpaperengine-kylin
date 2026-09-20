@@ -33,28 +33,29 @@ FetchContent_MakeAvailable(nlohmann_json)
 # them. Frontends link this and nothing else — they must never talk to
 # systemctl or craft unit files themselves.
 add_library(wallpaper_service STATIC
-    src/service/systemd/systemdunit.cpp
-    src/service/systemd/unitbuilder.cpp
-    src/service/config.cpp
-    src/service/argvbuilder.cpp
-    src/service/library.cpp
-    src/service/integration.cpp
-    src/service/engineunit.cpp
+    src/systemdunit.cpp
+    src/unitbuilder.cpp
+    src/config.cpp
+    src/argvbuilder.cpp
+    src/library.cpp
+    src/integration.cpp
+    src/engineunit.cpp
 )
-target_include_directories(wallpaper_service PUBLIC src/service src/service/systemd ${XCB_RANDR_INCLUDE_DIRS} ${PNG_INCLUDE_DIRS})
+target_include_directories(wallpaper_service PUBLIC src ${XCB_RANDR_INCLUDE_DIRS} ${PNG_INCLUDE_DIRS})
 target_link_libraries(wallpaper_service PUBLIC nlohmann_json::nlohmann_json ${XCB_LIBRARIES} ${XCB_RANDR_LIBRARIES} ${PNG_LIBRARIES} ${LIBSYSTEMD_LIBRARIES})
 target_compile_options(wallpaper_service PRIVATE -Wall -Wextra)
 
 # ---- wallpaper-engine
 # Frontend binary: the headless CLI is the entire control surface (the Qt
 # wallpaper browser was removed). Qt-free like the service layer — it links
-# this and nothing else, so a Qt include anywhere in src/ui breaks the link.
+# this and nothing else, so a Qt include anywhere in src/ (outside hook/)
+# breaks the link.
 add_executable(wallpaper-engine
-    src/ui/main.cpp
-    src/ui/cli.cpp
+    src/main.cpp
+    src/cli.cpp
 )
 target_link_libraries(wallpaper-engine PRIVATE wallpaper_service)
-target_include_directories(wallpaper-engine PRIVATE src/ui)
+target_include_directories(wallpaper-engine PRIVATE src)
 target_compile_options(wallpaper-engine PRIVATE -Wall -Wextra)
 
 # ---- peony-alpha-shim
