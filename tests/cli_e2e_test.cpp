@@ -59,11 +59,11 @@ private slots:
         // the wallpaper under test: the one already selected whenever
         // possible, so the visual state does not even change
         Config config = Config::load ();
-        m_previous = config.screens.isEmpty () ? QString () : config.screens.first ();
+        m_previous = config.screens.empty () ? QString () : QString::fromStdString (config.screens.begin ()->second);
         m_target = m_previous.isEmpty () ? QString ("843532366") : m_previous;
         // the same fallback the CLI itself uses: both this test process and
         // the CLI subprocess are headless, so they resolve identically
-        m_screen = EngineUnit::fallbackScreenName ();
+        m_screen = QString::fromStdString (EngineUnit::fallbackScreenName ());
 
         // the test process itself must address the SAME unit as the CLI
         // subprocesses it spawns
@@ -80,14 +80,17 @@ private slots:
         QCOMPARE (switched.exitCode, 0);
 
         // unit file updated, loaded by the manager and running
-        QFile unit (EngineUnit::unitPath ());
+        QFile unit (QString::fromStdString (EngineUnit::unitPath ()));
         QVERIFY (unit.exists ());
         QVERIFY (unit.open (QIODevice::ReadOnly));
         QVERIFY (QString::fromUtf8 (unit.readAll ()).contains ("--bg " + m_target));
         QCOMPARE (unitState (kTestUnit), QString ("active"));
 
         // config.json persisted the switch
-        QCOMPARE (Config::load ().screens.value (m_screen), m_target);
+        const Config afterSwitch = Config::load ();
+        const auto selected = afterSwitch.screens.find (m_screen.toStdString ());
+        QVERIFY (selected != afterSwitch.screens.end ());
+        QCOMPARE (QString::fromStdString (selected->second), m_target);
 
         // status --json: structure assertions only — the transient
         // active/inactive state is covered by the pause/resume cycle below
@@ -106,7 +109,7 @@ private slots:
         QCOMPARE (unitState (kTestUnit), QString ("inactive"));
         QVERIFY (runCli ({ "resume" }).exitCode == 0);
         QTRY_COMPARE (unitState (kTestUnit), QString ("active"));
-        QFile unitAfterResume (EngineUnit::unitPath ());
+        QFile unitAfterResume (QString::fromStdString (EngineUnit::unitPath ()));
         QVERIFY (unitAfterResume.open (QIODevice::ReadOnly));
         QVERIFY (QString::fromUtf8 (unitAfterResume.readAll ()).contains ("--bg " + m_target));
     }
@@ -116,7 +119,7 @@ private slots:
         Config config = Config::load ();
         if (!m_previous.isEmpty ()) {
             config.screens.clear ();
-            config.screens.insert (m_screen, m_previous);
+            config.screens[m_screen.toStdString ()] = m_previous.toStdString ();
             config.save ();
         }
         QProcess::execute ("systemctl", QStringList { "--user", "stop", kTestUnit });

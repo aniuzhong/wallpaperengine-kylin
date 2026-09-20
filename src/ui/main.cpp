@@ -37,8 +37,8 @@ int main (int argc, char** argv) {
     if (args.contains ("--selftest")) {
         // load the config (creating defaults on first run) and report
         const auto config = Config::load ();
-        std::printf ("config path: %s\n", Config::configPath ().toUtf8 ().constData ());
-        std::printf ("engine: %s\n", config.enginePath.toUtf8 ().constData ());
+        std::printf ("config path: %s\n", Config::configPath ().c_str ());
+        std::printf ("engine: %s\n", config.enginePath.c_str ());
         std::printf ("screens: %d, fps: %d, silent: %s\n", static_cast<int> (config.screens.size ()), config.fps,
                      config.silent ? "true" : "false");
         return config.save () ? 0 : 1;

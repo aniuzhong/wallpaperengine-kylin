@@ -5,81 +5,97 @@
 
 #include <QtTest>
 
+#include <algorithm>
+
 using namespace SystemdLayer;
+
+namespace {
+std::vector<std::string> joinArgs (const std::vector<std::string>& args) {
+    // join the escaped forms back into one ExecStart line
+    std::string line;
+    for (const std::string& arg : args) {
+        if (!line.empty ())
+            line += ' ';
+        line += arg;
+    }
+    return parseExecArgs (line);
+}
+} // namespace
 
 class UnitBuilderTest : public QObject {
     Q_OBJECT
 
 private slots:
     void escapeExecArg_plainArgStaysUntouched () {
-        QCOMPARE (escapeExecArg (QString ("/usr/bin/sleep")), QString ("/usr/bin/sleep"));
-        QCOMPARE (escapeExecArg (QString ("3600")), QString ("3600"));
+        QCOMPARE (escapeExecArg ("/usr/bin/sleep"), std::string ("/usr/bin/sleep"));
+        QCOMPARE (escapeExecArg ("3600"), std::string ("3600"));
     }
 
     void escapeExecArg_spaceIsQuoted () {
-        QCOMPARE (escapeExecArg (QString ("hello world")), QString ("\"hello world\""));
+        QCOMPARE (escapeExecArg ("hello world"), std::string ("\"hello world\""));
     }
 
     void escapeExecArg_quoteIsEscaped () {
-        QCOMPARE (escapeExecArg (QString ("say \"hi\"")), QString ("\"say \\\"hi\\\"\""));
+        QCOMPARE (escapeExecArg ("say \"hi\""), std::string ("\"say \\\"hi\\\"\""));
     }
 
     void escapeExecArg_dollarAndPercentDoubled () {
         // systemd substitutes $VAR and %specifiers in ExecStart; literals
         // must be doubled
-        QCOMPARE (escapeExecArg (QString ("$HOME")), QString ("$$HOME"));
-        QCOMPARE (escapeExecArg (QString ("%h")), QString ("%%h"));
+        QCOMPARE (escapeExecArg ("$HOME"), std::string ("$$HOME"));
+        QCOMPARE (escapeExecArg ("%h"), std::string ("%%h"));
     }
 
     void escapeExecArg_semicolonIsQuoted () {
         // ';' separates commands inside a single ExecStart line
-        QCOMPARE (escapeExecArg (QString ("a;b")), QString ("\"a;b\""));
+        QCOMPARE (escapeExecArg ("a;b"), std::string ("\"a;b\""));
     }
 
     void toExecCommand_decomposesArgv () {
         const ExecCommand command = toExecCommand (
-            QStringList { QStringLiteral ("/usr/bin/tool"), QStringLiteral ("--flag"), QStringLiteral ("x") });
-        QCOMPARE (command.program, QString ("/usr/bin/tool"));
-        QCOMPARE (command.args.size (), 3);
-        QCOMPARE (command.args.first (), QString ("/usr/bin/tool"));
+            std::vector<std::string> { "/usr/bin/tool", "--flag", "x" });
+        QCOMPARE (command.program, std::string ("/usr/bin/tool"));
+        QCOMPARE (command.args.size (), size_t (3));
+        QCOMPARE (command.args.front (), std::string ("/usr/bin/tool"));
     }
 
     void toExecCommand_emptyArgvGivesNullCommand () {
         const ExecCommand command = toExecCommand ({});
-        QVERIFY (command.program.isEmpty ());
-        QVERIFY (command.args.isEmpty ());
+        QVERIFY (command.program.empty ());
+        QVERIFY (command.args.empty ());
     }
 
     void parseExecArgs_plainLine () {
-        // no braced init with commas inside the macro: the preprocessor
-        // would split it as extra arguments
-        const QStringList expected { QStringLiteral ("/bin/sleep"), QStringLiteral ("3600") };
-        QCOMPARE (parseExecArgs (QString ("/bin/sleep 3600")), expected);
+        const std::vector<std::string> expected { "/bin/sleep", "3600" };
+        QCOMPARE (parseExecArgs ("/bin/sleep 3600"), expected);
     }
 
     void parseExecArgs_invertsEscapeExecArg () {
         // the roundtrip the unit file depends on: unitFileContent escapes,
         // unitBackgrounds parses — any argv must survive unchanged
-        const QStringList argv { QStringLiteral ("/usr/bin/engine"),
-                                 QStringLiteral ("--bg"),
-                                 QStringLiteral ("843532366"),
-                                 QStringLiteral ("some dir/file"),
-                                 QStringLiteral ("say \"hi\""),
-                                 QStringLiteral ("a;b"),
-                                 QStringLiteral ("a\\b"),
-                                 QStringLiteral ("tab\tinside") };
-        QStringList line;
-        for (const QString& arg : argv)
-            line << escapeExecArg (arg);
-        QCOMPARE (parseExecArgs (line.join (' ')), argv);
+        const std::vector<std::string> argv { "/usr/bin/engine",
+                                              "--bg",
+                                              "843532366",
+                                              "some dir/file",
+                                              "say \"hi\"",
+                                              "a;b",
+                                              "a\\b",
+                                              "tab\tinside" };
+        std::string line;
+        for (const std::string& arg : argv) {
+            if (!line.empty ())
+                line += ' ';
+            line += escapeExecArg (arg);
+        }
+        QCOMPARE (parseExecArgs (line), argv);
     }
 
     void parseExecArgs_undoublesDollarAndPercent () {
         // systemd undoes the doubling before exec, so the parsed argv must
         // show the literal characters the engine will see
-        QCOMPARE (parseExecArgs (QString ("$$HOME")), QStringList { "$HOME" });
-        QCOMPARE (parseExecArgs (QString ("%%h")), QStringList { "%h" });
-        QCOMPARE (parseExecArgs (QString ("\"/tmp/a$$b c\"")), QStringList { "/tmp/a$b c" });
+        QCOMPARE (parseExecArgs ("$$HOME"), std::vector<std::string> { "$HOME" });
+        QCOMPARE (parseExecArgs ("%%h"), std::vector<std::string> { "%h" });
+        QCOMPARE (parseExecArgs ("\"/tmp/a$$b c\""), std::vector<std::string> { "/tmp/a$b c" });
     }
 };
 

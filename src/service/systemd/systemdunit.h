@@ -1,9 +1,10 @@
 #pragma once
 
-#include <QMap>
-#include <QString>
-#include <QStringList>
-#include <QVariant>
+#include <cstdint>
+#include <map>
+#include <string>
+#include <variant>
+#include <vector>
 
 namespace SystemdLayer {
 
@@ -12,9 +13,13 @@ namespace SystemdLayer {
 struct Error {
     enum Kind { NoError, BusUnreachable, NoSuchUnit, JobFailed, InvalidInput, Unknown };
     Kind kind = NoError;
-    QString dbusName;
-    QString message;
+    std::string dbusName;
+    std::string message;
 };
+
+// Value of an extra transient unit property: marshaled to its natural D-Bus
+// type (string / boolean / 64-bit signed / double).
+using UnitPropertyValue = std::variant<std::string, bool, int64_t, double>;
 
 // One systemd user unit and its lifecycle, backed by the
 // org.freedesktop.systemd1 D-Bus API on the session bus. Knows nothing
@@ -22,17 +27,17 @@ struct Error {
 // polling activeState(); every lifecycle call is synchronous.
 class SystemdUnit {
 public:
-    explicit SystemdUnit(QString unitName);
+    explicit SystemdUnit(std::string unitName);
     ~SystemdUnit();
 
-    QString unitName() const;
+    std::string unitName() const;
 
     // Transient unit: StartTransientUnit without touching the filesystem.
     // Disappears with the session; ideal for relaunched system components.
-    // extraProperties: optional additional unit properties (key -> value;
-    // values marshal to their natural D-Bus types).
-    bool startTransient(const QStringList& execArgs, const QMap<QString, QString>& environment,
-                        const QMap<QString, QVariant>& extraProperties, Error* error = nullptr);
+    // extraProperties: optional additional unit properties (key -> value).
+    bool startTransient(const std::vector<std::string>& execArgs,
+                        const std::map<std::string, std::string>& environment,
+                        const std::map<std::string, UnitPropertyValue>& extraProperties, Error* error = nullptr);
 
     bool start(Error* error = nullptr);
     bool stop(Error* error = nullptr);
@@ -41,11 +46,11 @@ public:
 
     // ActiveState per systemd: active / inactive / failed / activating.
     // A unit that is merely installed (not loaded) reads as inactive.
-    QString activeState(Error* error = nullptr) const;
+    std::string activeState(Error* error = nullptr) const;
     bool isActive() const;
 
 private:
-    QString m_unitName;
+    std::string m_unitName;
 };
 
 // Reload the user manager so freshly written unit files are picked up.

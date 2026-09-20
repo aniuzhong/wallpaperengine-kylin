@@ -9,17 +9,17 @@ add_test (NAME unitbuilder_test COMMAND unitbuilder_test)
 
 # T0: Config -> argv mapping (pure)
 add_executable (argvbuilder_test argvbuilder_test.cpp ../src/service/argvbuilder.cpp ../src/service/config.cpp)
-target_link_libraries (argvbuilder_test PRIVATE Qt5::Core Qt5::Test)
+target_link_libraries (argvbuilder_test PRIVATE Qt5::Core Qt5::Test nlohmann_json::nlohmann_json)
 add_test (NAME argvbuilder_test COMMAND argvbuilder_test)
 
 # T0: Config persistence roundtrip
 add_executable (config_test config_test.cpp ../src/service/config.cpp)
-target_link_libraries (config_test PRIVATE Qt5::Core Qt5::Test)
+target_link_libraries (config_test PRIVATE Qt5::Core Qt5::Test nlohmann_json::nlohmann_json)
 add_test (NAME config_test COMMAND config_test)
 
 # T0: library metadata scan (pure; previews are paths, no decoding here)
 add_executable (library_test library_test.cpp ../src/service/library.cpp)
-target_link_libraries (library_test PRIVATE Qt5::Core Qt5::Test)
+target_link_libraries (library_test PRIVATE Qt5::Core Qt5::Test nlohmann_json::nlohmann_json)
 add_test (NAME library_test COMMAND library_test)
 
 # T3: headless CLI end-to-end against the real user manager (isolated by

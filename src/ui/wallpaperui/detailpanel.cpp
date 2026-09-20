@@ -10,7 +10,7 @@
 namespace {
 // presentation formatting of the service-provided byte count; the only
 // consumer of the size in this frontend
-QString humanizeSize(quint64 bytes) {
+QString humanizeSize(uint64_t bytes) {
     if (bytes >= (1ULL << 30))
         return QString::number(bytes / double (1ULL << 30), 'f', 1) + " GB";
     if (bytes >= (1ULL << 20))
@@ -59,11 +59,12 @@ void DetailPanel::showEntry (const WallpaperEntry& entry) {
     // own display size (placeholder when the wallpaper ships no preview).
     // Animated previews (gif) play in place.
     stopMovie ();
-    m_title->setText (entry.title);
-    m_meta->setText (entry.type + " · " + humanizeSize (entry.sizeBytes));
+    m_title->setText (QString::fromStdString (entry.title));
+    m_meta->setText (QString::fromStdString (entry.type) + " · " + humanizeSize (entry.sizeBytes));
 
-    if (isAnimatedPreview (entry.previewPath)) {
-        QFile anim (entry.previewPath);
+    const QString previewPath = QString::fromStdString (entry.previewPath);
+    if (isAnimatedPreview (previewPath)) {
+        QFile anim (previewPath);
         if (anim.open (QIODevice::ReadOnly)) {
             m_animData = anim.readAll ();
             m_buffer = new QBuffer (&m_animData, this);
@@ -77,11 +78,11 @@ void DetailPanel::showEntry (const WallpaperEntry& entry) {
         }
     }
 
-    const QImage preview = decodePreview (entry.previewPath);
+    const QImage preview = decodePreview (previewPath);
     if (preview.isNull ()) {
         QPixmap placeholder (kPreviewW, kPreviewH);
         QPainter painter (&placeholder);
-        paintPlaceholder (&painter, placeholder.rect (), this->palette (), entry.type);
+        paintPlaceholder (&painter, placeholder.rect (), this->palette (), QString::fromStdString (entry.type));
         m_preview->setPixmap (placeholder);
     } else {
         m_preview->setPixmap (QPixmap::fromImage (preview));

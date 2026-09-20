@@ -6,6 +6,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMainWindow>
+#include <vector>
 
 // Wallpaper UI shell (M1): a read-only library browser in the style of the
 // original. All data comes from the service layer (library scan + config) —
@@ -20,12 +21,12 @@ private:
     void buildToolbar ();
     void buildBody ();
     const WallpaperEntry* findEntry (const QString& id) const;
-    QList<WallpaperEntry> filtered () const;
+    std::vector<WallpaperEntry> filtered () const;
     void rebuildGrid ();
     void showDetail (QListWidgetItem* current);
     void applyEntry (const WallpaperEntry& entry);
 
-    QList<WallpaperEntry> m_entries;
+    std::vector<WallpaperEntry> m_entries;
 
     QLineEdit* m_search = nullptr;
     QComboBox* m_type = nullptr;

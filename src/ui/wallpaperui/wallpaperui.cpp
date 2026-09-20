@@ -96,8 +96,9 @@ void WallpaperUI::buildBody () {
 }
 
 const WallpaperEntry* WallpaperUI::findEntry (const QString& id) const {
+    const std::string wanted = id.toStdString ();
     for (const WallpaperEntry& entry : m_entries)
-        if (entry.id == id)
+        if (entry.id == wanted)
             return &entry;
     return nullptr;
 }
@@ -108,29 +109,28 @@ void WallpaperUI::applyEntry (const WallpaperEntry& entry) {
     EngineUnit::applyConfig (config); // the wallpaper keeps running; failure surfaces on the next manual start
 }
 
-QList<WallpaperEntry> WallpaperUI::filtered () const {
+std::vector<WallpaperEntry> WallpaperUI::filtered () const {
     const QString needle = m_search->text ().trimmed ();
     const QString type = m_type->currentIndex () == 0 ? QString () : m_type->currentText ();
-    QList<WallpaperEntry> result;
+    std::vector<WallpaperEntry> result;
     for (const WallpaperEntry& entry : m_entries) {
-        if (!type.isEmpty () && entry.type != type)
+        if (!type.isEmpty () && QString::fromStdString (entry.type) != type)
             continue;
-        if (!needle.isEmpty () && !entry.title.contains (needle, Qt::CaseInsensitive))
+        if (!needle.isEmpty () && !QString::fromStdString (entry.title).contains (needle, Qt::CaseInsensitive))
             continue;
-        result.append (entry);
+        result.push_back (entry);
     }
     // both directions collate case-insensitively: the two orders must be
     // exact inverses of each other
+    const auto byTitle = [] (const WallpaperEntry& a, const WallpaperEntry& b) {
+        return QString::fromStdString (a.title).compare (QString::fromStdString (b.title), Qt::CaseInsensitive);
+    };
     if (m_sort->currentIndex () == 1)
         std::sort (result.begin (), result.end (),
-                   [] (const WallpaperEntry& a, const WallpaperEntry& b) {
-                       return a.title.compare (b.title, Qt::CaseInsensitive) > 0;
-                   });
+                   [&byTitle] (const WallpaperEntry& a, const WallpaperEntry& b) { return byTitle (a, b) > 0; });
     else
         std::sort (result.begin (), result.end (),
-                   [] (const WallpaperEntry& a, const WallpaperEntry& b) {
-                       return a.title.compare (b.title, Qt::CaseInsensitive) < 0;
-                   });
+                   [&byTitle] (const WallpaperEntry& a, const WallpaperEntry& b) { return byTitle (a, b) < 0; });
     return result;
 }
 
@@ -138,10 +138,10 @@ void WallpaperUI::rebuildGrid () {
     m_grid->clear ();
     for (const WallpaperEntry& entry : filtered ()) {
         auto* item = new QListWidgetItem (m_grid);
-        item->setData (Qt::DisplayRole, entry.title);
-        item->setData (Qt::UserRole, entry.type);
-        item->setData (kIdRole, entry.id);
-        const QImage preview = decodePreview (entry.previewPath);
+        item->setData (Qt::DisplayRole, QString::fromStdString (entry.title));
+        item->setData (Qt::UserRole, QString::fromStdString (entry.type));
+        item->setData (kIdRole, QString::fromStdString (entry.id));
+        const QImage preview = decodePreview (QString::fromStdString (entry.previewPath));
         if (!preview.isNull ())
             item->setIcon (QIcon (QPixmap::fromImage (preview)));
     }

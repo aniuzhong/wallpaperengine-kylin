@@ -1,27 +1,28 @@
 #include "config.h"
 
-#include <QCoreApplication>
-#include <QDir>
-#include <QFile>
-#include <QJsonDocument>
-#include <QStandardPaths>
+#include "posix.h"
+
+#include <nlohmann/json.hpp>
+
+#include <filesystem>
+#include <fstream>
+
+namespace fs = std::filesystem;
+using json = nlohmann::json;
 
 namespace {
 
-// First existing candidate wins; when none exists the caller's fallback is
-// kept so doctor/status report a concrete (MISSING) path instead of an
-// empty one.
-QString firstExisting(const QStringList& candidates, const QString& fallback) {
-    for (const QString& candidate : candidates)
-        if (!candidate.isEmpty() && QFile::exists(candidate))
+std::string firstExisting(const std::vector<std::string>& candidates, const std::string& fallback) {
+    for (const std::string& candidate : candidates)
+        if (!candidate.empty() && fs::exists(candidate))
             return candidate;
     return fallback;
 }
 
 // Steam install layouts, matching linux-wallpaperengine's own auto-detection
 // list (native, ~/.steam symlink, flatpak, snap).
-QStringList steamRoots() {
-    const QString home = QDir::homePath();
+std::vector<std::string> steamRoots() {
+    const std::string home = lwe::homeDir();
     return {
         home + "/.steam/steam",
         home + "/.local/share/Steam",
@@ -30,14 +31,37 @@ QStringList steamRoots() {
     };
 }
 
-} // namespace
-
-QString Config::configDir() {
-    const QString base = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
-    return base + "/lwe-dynamic-wallpaper";
+// json extraction that keeps the fallback on a missing key OR a wrong type —
+// the QJsonDocument value(key, default) semantics this file used to rely on.
+std::string getStr(const json& obj, const char* key, const std::string& dflt) {
+    const auto it = obj.find(key);
+    return it != obj.end() && it->is_string() ? it->get<std::string>() : dflt;
 }
 
-QString Config::configPath() {
+int getInt(const json& obj, const char* key, int dflt) {
+    const auto it = obj.find(key);
+    return it != obj.end() && it->is_number_integer() ? it->get<int>() : dflt;
+}
+
+bool getBool(const json& obj, const char* key, bool dflt) {
+    const auto it = obj.find(key);
+    return it != obj.end() && it->is_boolean() ? it->get<bool>() : dflt;
+}
+
+// property values are stored as text — the engine takes --set-property
+// key=value strings, and non-string json leaves are stringified the way
+// QVariant::toString used to flatten them
+std::string propertyToString(const json& value) {
+    return value.is_string() ? value.get<std::string>() : value.dump();
+}
+
+} // namespace
+
+std::string Config::configDir() {
+    return lwe::envOr("XDG_CONFIG_HOME", lwe::homeDir() + "/.config") + "/lwe-dynamic-wallpaper";
+}
+
+std::string Config::configPath() {
     return configDir() + "/config.json";
 }
 
@@ -46,101 +70,106 @@ Config Config::load() {
 
     // Resolve defaults from standard install locations; the config file
     // (and a .deb install) overrides them.
-    QStringList engineCandidates {
+    std::vector<std::string> engineCandidates {
         "/opt/linux-wallpaperengine/linux-wallpaperengine", // deb payload layout
         "/usr/local/bin/linux-wallpaperengine",
         "/usr/bin/linux-wallpaperengine",
     };
-    if (QCoreApplication::instance() != nullptr) {
-        const QString appDir = QCoreApplication::applicationDirPath();
-        engineCandidates << appDir + "/../linux-wallpaperengine" // deb: bin/ sibling of the flat engine install
-                         << appDir + "/linux-wallpaperengine";   // flat dev tree
+    const std::string appDir = lwe::exeDir();
+    if (!appDir.empty()) {
+        engineCandidates.push_back(appDir + "/../linux-wallpaperengine"); // deb: bin/ sibling of the flat engine install
+        engineCandidates.push_back(appDir + "/linux-wallpaperengine");    // flat dev tree
     }
     config.enginePath = firstExisting(engineCandidates, "/opt/linux-wallpaperengine/linux-wallpaperengine");
 
     // an empty result is intentional: argvbuilder then omits --assets-dir
     // and the engine runs its own auto-detection
-    QStringList assetsCandidates;
-    for (const QString& root : steamRoots())
-        assetsCandidates << root + "/steamapps/common/wallpaper_engine/assets";
-    config.assetsDir = firstExisting(assetsCandidates, QString());
-
-    QStringList workshopCandidates;
-    for (const QString& root : steamRoots())
-        workshopCandidates << root + "/steamapps/workshop/content/431960";
-    config.workshopDir = firstExisting(workshopCandidates, workshopCandidates.first());
-
-    QFile file(configPath());
-    if (!file.open(QIODevice::ReadOnly)) {
-	    return config;
+    std::vector<std::string> assetsCandidates;
+    std::vector<std::string> workshopCandidates;
+    for (const std::string& root : steamRoots()) {
+        assetsCandidates.push_back(root + "/steamapps/common/wallpaper_engine/assets");
+        workshopCandidates.push_back(root + "/steamapps/workshop/content/431960");
     }
+    config.assetsDir = firstExisting(assetsCandidates, "");
+    config.workshopDir = firstExisting(workshopCandidates, workshopCandidates.front());
 
-    const QJsonObject obj = QJsonDocument::fromJson(file.readAll()).object();
-    return Config::fromJson(obj);
-}
+    std::ifstream file(configPath());
+    if (!file.is_open())
+        return config;
 
-Config Config::fromJson(const QJsonObject& obj) {
-    Config config;
-    config.enginePath = obj.value("enginePath").toString(config.enginePath);
-    config.assetsDir = obj.value("assetsDir").toString(config.assetsDir);
-    config.workshopDir = obj.value("workshopDir").toString(config.workshopDir);
-    config.display = obj.value("display").toString(config.display);
-    config.scaling = obj.value("scaling").toString(config.scaling);
-    config.clamp = obj.value("clamp").toString(config.clamp);
-    config.fps = obj.value("fps").toInt(config.fps);
-    config.fullscreenPause = obj.value("fullscreenPause").toBool(config.fullscreenPause);
-    config.automute = obj.value("automute").toBool(config.automute);
-    config.audioProcessing = obj.value("audioProcessing").toBool(config.audioProcessing);
-    config.volume = obj.value("volume").toInt(config.volume);
-    config.silent = obj.value("silent").toBool(config.silent);
-    config.disableParticles = obj.value("disableParticles").toBool(config.disableParticles);
-    config.disableMouse = obj.value("disableMouse").toBool(config.disableMouse);
-    config.disableParallax = obj.value("disableParallax").toBool(config.disableParallax);
-
-    config.screens.clear();
-    const QJsonObject screens = obj.value("screens").toObject();
-    for(auto it = screens.begin(); it != screens.end(); ++it) {
-	    config.screens.insert(it.key(), it.value().toString());
+    json obj;
+    try {
+        file >> obj;
+    } catch (...) {
+        return config; // corrupt file: the freshly resolved defaults survive
     }
+    if (!obj.is_object())
+        return config;
 
-    config.properties = obj.value("properties").toObject().toVariantMap();
+    config.enginePath = getStr(obj, "enginePath", config.enginePath);
+    config.assetsDir = getStr(obj, "assetsDir", config.assetsDir);
+    config.workshopDir = getStr(obj, "workshopDir", config.workshopDir);
+    config.display = getStr(obj, "display", config.display);
+    config.scaling = getStr(obj, "scaling", config.scaling);
+    config.clamp = getStr(obj, "clamp", config.clamp);
+    config.fps = getInt(obj, "fps", config.fps);
+    config.fullscreenPause = getBool(obj, "fullscreenPause", config.fullscreenPause);
+    config.automute = getBool(obj, "automute", config.automute);
+    config.audioProcessing = getBool(obj, "audioProcessing", config.audioProcessing);
+    config.volume = getInt(obj, "volume", config.volume);
+    config.silent = getBool(obj, "silent", config.silent);
+    config.disableParticles = getBool(obj, "disableParticles", config.disableParticles);
+    config.disableMouse = getBool(obj, "disableMouse", config.disableMouse);
+    config.disableParallax = getBool(obj, "disableParallax", config.disableParallax);
+
+    if (auto screens = obj.find("screens"); screens != obj.end() && screens->is_object())
+        for (auto screen = screens->begin(); screen != screens->end(); ++screen)
+            if (screen.value().is_string())
+                config.screens[screen.key()] = screen.value().get<std::string>();
+
+    if (auto props = obj.find("properties"); props != obj.end() && props->is_object())
+        for (auto wallpaper = props->begin(); wallpaper != props->end(); ++wallpaper)
+            if (wallpaper.value().is_object())
+                for (auto prop = wallpaper.value().begin(); prop != wallpaper.value().end(); ++prop)
+                    config.properties[wallpaper.key()][prop.key()] = propertyToString(prop.value());
+
     return config;
 }
 
-QJsonObject Config::toJson() const {
-    QJsonObject obj;
-    obj.insert("enginePath", enginePath);
-    obj.insert("assetsDir", assetsDir);
-    obj.insert("workshopDir", workshopDir);
-    obj.insert("scaling", scaling);
-    obj.insert("clamp", clamp);
-    obj.insert("fps", fps);
-    obj.insert("fullscreenPause", fullscreenPause);
-    obj.insert("automute", automute);
-    obj.insert("audioProcessing", audioProcessing);
-    obj.insert("volume", volume);
-    obj.insert("silent", silent);
-    obj.insert("disableParticles", disableParticles);
-    obj.insert("disableMouse", disableMouse);
-    obj.insert("disableParallax", disableParallax);
-
-    QJsonObject screensJson;
-    for (auto it = screens.begin(); it != screens.end(); ++it) {
-	    screensJson.insert(it.key(), it.value());
-    }
-    obj.insert("display", display);
-    obj.insert("screens", screensJson);
-    obj.insert("properties", QJsonObject::fromVariantMap(properties));
-    return obj;
-}
-
 bool Config::save() const {
-    QDir().mkpath(configDir());
-    QFile file(configPath());
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-	    return false;
-    }
-    file.write(QJsonDocument(toJson()).toJson(QJsonDocument::Indented));
-    return true;
-}
+    std::error_code ec;
+    fs::create_directories(configDir(), ec);
 
+    json obj;
+    obj["enginePath"] = enginePath;
+    obj["assetsDir"] = assetsDir;
+    obj["workshopDir"] = workshopDir;
+    obj["scaling"] = scaling;
+    obj["clamp"] = clamp;
+    obj["fps"] = fps;
+    obj["fullscreenPause"] = fullscreenPause;
+    obj["automute"] = automute;
+    obj["audioProcessing"] = audioProcessing;
+    obj["volume"] = volume;
+    obj["silent"] = silent;
+    obj["disableParticles"] = disableParticles;
+    obj["disableMouse"] = disableMouse;
+    obj["disableParallax"] = disableParallax;
+    obj["display"] = display;
+    obj["screens"] = screens;
+
+    json properties = json::object();
+    for (const auto& [wallpaperId, props] : this->properties) {
+        json entry = json::object();
+        for (const auto& [key, value] : props)
+            entry[key] = value;
+        properties[wallpaperId] = entry;
+    }
+    obj["properties"] = properties;
+
+    std::ofstream file(configPath(), std::ios::trunc);
+    if (!file.is_open())
+        return false;
+    file << obj.dump(2) << "\n"; // indented, matching QJsonDocument::Indented
+    return file.good();
+}

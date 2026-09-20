@@ -2,45 +2,58 @@
 
 namespace SystemdLayer {
 
-QString escapeExecArg (const QString& arg) {
-    QString escaped = arg;
+std::string escapeExecArg (const std::string& arg) {
     // literal $ and % must be doubled: systemd substitutes $VAR/${VAR} and
     // %specifiers in ExecStart arguments
-    escaped.replace ('$', "$$");
-    escaped.replace ('%', "%%");
+    std::string escaped;
+    escaped.reserve (arg.size ());
+    for (const char c : arg) {
+        if (c == '$' || c == '%') {
+            escaped += c;
+            escaped += c;
+        } else {
+            escaped += c;
+        }
+    }
+
     bool needsQuoting = false;
-    for (const char c : { ' ', '\t', '"', '\'', ';', '\\' }) {
-        if (escaped.contains (c)) {
+    for (const char c : escaped) {
+        if (c == ' ' || c == '\t' || c == '"' || c == '\'' || c == ';' || c == '\\') {
             needsQuoting = true;
             break;
         }
     }
-    if (needsQuoting) {
-        escaped.replace ('\\', "\\\\");
-        escaped.replace ('"', "\\\"");
-        escaped = '"' + escaped + '"';
+    if (!needsQuoting)
+        return escaped;
+
+    std::string quoted = "\"";
+    for (const char c : escaped) {
+        if (c == '\\' || c == '"')
+            quoted += '\\';
+        quoted += c;
     }
-    return escaped;
+    quoted += '"';
+    return quoted;
 }
 
-QStringList parseExecArgs (const QString& line) {
-    QStringList args;
-    QString current;
+std::vector<std::string> parseExecArgs (const std::string& line) {
+    std::vector<std::string> args;
+    std::string current;
     bool inQuotes = false;
     const auto flush = [&] {
-        if (!current.isEmpty ()) {
-            args << current;
+        if (!current.empty ()) {
+            args.push_back (current);
             current.clear ();
         }
     };
 
-    for (int i = 0; i < line.size (); i++) {
-        const QChar c = line.at (i);
+    for (size_t i = 0; i < line.size (); i++) {
+        const char c = line[i];
         if (inQuotes) {
             // escapeExecArg only emits \\ and \" inside quotes; any other
             // backslash sequence stays literal
-            if (c == '\\' && i + 1 < line.size () && (line.at (i + 1) == '"' || line.at (i + 1) == '\\')) {
-                current += line.at (i + 1);
+            if (c == '\\' && i + 1 < line.size () && (line[i + 1] == '"' || line[i + 1] == '\\')) {
+                current += line[i + 1];
                 i++;
             } else if (c == '"') {
                 inQuotes = false;
@@ -59,17 +72,24 @@ QStringList parseExecArgs (const QString& line) {
 
     // undo the doubling the same way systemd does before exec, so callers
     // see the argv the engine will actually run with
-    for (QString& arg : args) {
-        arg.replace ("$$", "$");
-        arg.replace ("%%", "%");
+    std::string doubled;
+    for (std::string& arg : args) {
+        doubled.clear();
+        doubled.reserve(arg.size ());
+        for (size_t i = 0; i < arg.size (); i++) {
+            doubled += arg[i];
+            if ((arg[i] == '$' || arg[i] == '%') && i + 1 < arg.size() && arg[i + 1] == arg[i])
+                i++; // skip the second half of $$ / %%
+        }
+        arg.swap(doubled);
     }
     return args;
 }
 
-ExecCommand toExecCommand (const QStringList& execArgs) {
+ExecCommand toExecCommand(const std::vector<std::string>& execArgs) {
     ExecCommand command;
-    if (!execArgs.isEmpty ()) {
-        command.program = execArgs.first ();
+    if (!execArgs.empty()) {
+        command.program = execArgs.front();
         command.args = execArgs;
     }
     return command;

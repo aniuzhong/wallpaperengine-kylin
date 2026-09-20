@@ -1,6 +1,7 @@
 #pragma once
 
-#include <QString>
+#include <cstdint>
+#include <string>
 
 // Desktop-integration management for the UKUI side of the stack: keeps
 // peony-qt-desktop running with the interposition shim so the wallpaper
@@ -12,21 +13,21 @@
 namespace Integration {
 
 struct Status {
-    qint64 peonyPid = 0;  // 0 when peony-qt-desktop is not running
+    int64_t peonyPid = 0; // 0 when peony-qt-desktop is not running
     bool shimLoaded = false;
     bool configured () const { return peonyPid != 0 && shimLoaded; }
 };
 
 // Scan /proc for the peony desktop process and check whether the shim is
 // mapped into it.
-Status detect();
+Status detect ();
 
 // Locate libpeony-alpha-shim.so on disk: probe the frontend binary's own
 // directory (build tree, and layouts that ship the pair together), the
 // library directory a bin/ + lib/ install() layout produces, then the
 // standard system library paths. Returns an empty string when nothing
 // matches.
-QString locateShim();
+std::string locateShim ();
 
 // Full integration pass (absorbs the former inject-peony.sh):
 //   1. point accountsservice/gsettings at a marker wallpaper generated
@@ -39,6 +40,6 @@ QString locateShim();
 //      crashes)
 //   4. verify: process alive, shim mapped
 // Returns false with details in |error| on failure.
-bool setup(QString* error);
+bool setup(std::string* error);
 
 } // namespace Integration

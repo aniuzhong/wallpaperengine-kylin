@@ -1,78 +1,89 @@
 #include "integration.h"
 
+#include "posix.h"
 #include "systemdunit.h"
-
-#include <QCoreApplication>
-#include <QDir>
-#include <QFile>
-#include <QProcess>
-#include <QStandardPaths>
-#include <QThread>
 
 #include <png.h>
 #include <systemd/sd-bus.h>
 
-#include <cstdarg>
-#include <setjmp.h>
-#include <sys/stat.h>
+#include <csetjmp>
 #include <csignal>
+#include <cstdarg>
+#include <cstdio>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <string>
+#include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
+#include <vector>
+
+namespace fs = std::filesystem;
 
 namespace {
 
-QString markerPath() {
-    return QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) +
-           "/lwe-dynamic-wallpaper/lwe-alpha-wallpaper.png";
+std::string dataDir() {
+    // GenericDataLocation: XDG_DATA_HOME or ~/.local/share
+    return lwe::envOr("XDG_DATA_HOME", lwe::homeDir() + "/.local/share") + "/lwe-dynamic-wallpaper";
 }
 
-QString dataDir() {
-    return QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/lwe-dynamic-wallpaper";
+std::string markerPath() {
+    return dataDir() + "/lwe-alpha-wallpaper.png";
 }
 
-QList<qint64> findPeonyPids() {
-    QList<qint64> pids;
-    QDir proc("/proc");
-    const QStringList ids = proc.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
-    for (const QString& id : ids) {
-        bool ok = false;
-        const qint64 pid = id.toLongLong(&ok);
-        if (!ok || pid <= 0)
+// read a (small) file whole; /proc files report size 0, so drain with
+// reads instead of trusting the file size
+bool readSmallFile(const std::string& path, std::string& out) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file.is_open())
+        return false;
+    out.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    return true;
+}
+
+std::vector<int64_t> findPeonyPids() {
+    std::vector<int64_t> pids;
+    std::error_code ec;
+    for (const fs::directory_entry& entry : fs::directory_iterator("/proc", ec)) {
+        const std::string name = entry.path().filename().string();
+        // numeric directory names only
+        if (name.empty() || name.find_first_not_of("0123456789") != std::string::npos)
             continue;
         // only this user's desktop: another session's peony is not ours to
         // touch (a command-line match system-wide would kill it)
         struct stat st;
-        if (::stat(QString("/proc/%1").arg(pid).toUtf8().constData(), &st) != 0 || st.st_uid != getuid())
+        if (::stat(entry.path().c_str(), &st) != 0 || st.st_uid != getuid())
             continue;
-        QFile cmd(QString("/proc/%1/cmdline").arg(pid));
-        if (!cmd.open(QIODevice::ReadOnly))
+        std::string cmdline;
+        if (!readSmallFile((entry.path() / "cmdline").string(), cmdline))
             continue;
-        if (QString::fromUtf8(cmd.readAll()).contains("peony-qt-desktop"))
-            pids.append(pid);
+        if (cmdline.find("peony-qt-desktop") != std::string::npos)
+            pids.push_back(atoll(name.c_str()));
     }
     return pids;
 }
 
-qint64 findPeonyPid() {
-    const QList<qint64> pids = findPeonyPids();
-    return pids.isEmpty() ? 0 : pids.first();
+int64_t findPeonyPid() {
+    const std::vector<int64_t> pids = findPeonyPids();
+    return pids.empty() ? 0 : pids.front();
 }
 
-bool shimMapped(qint64 pid) {
-    QFile maps(QString("/proc/%1/maps").arg(pid));
-    if (!maps.open(QIODevice::ReadOnly))
-        return false;
-    return maps.readAll().contains("peony-alpha-shim");
+bool shimMapped(int64_t pid) {
+    std::string maps;
+    return readSmallFile("/proc/" + std::to_string(pid) + "/maps", maps) &&
+           maps.find("peony-alpha-shim") != std::string::npos;
 }
 
 bool peonyGone() {
-    return findPeonyPids().isEmpty();
+    return findPeonyPids().empty();
 }
 
 bool waitForPeonyExit(int timeoutMs) {
     while (timeoutMs > 0) {
         if (peonyGone())
             return true;
-        QThread::msleep(100);
+        lwe::sleepMs(100);
         timeoutMs -= 100;
     }
     return peonyGone();
@@ -83,40 +94,40 @@ bool waitForPeonyExit(int timeoutMs) {
 // former dbus-send patience (5s).
 
 // One system-bus method call; nullptr (caller unrefs) on any failure.
-sd_bus_message* callAccounts(sd_bus* bus, const char* path, const char* iface, const char* member,
-                             const char* types, ...) {
+sd_bus_message* callAccounts (sd_bus* bus, const char* path, const char* iface, const char* member,
+                              const char* types, ...) {
     va_list ap;
-    va_start(ap, types);
+    va_start (ap, types);
     sd_bus_message* m = nullptr;
-    int rc = sd_bus_message_new_method_call(bus, &m, "org.freedesktop.Accounts", path, iface, member);
+    int rc = sd_bus_message_new_method_call (bus, &m, "org.freedesktop.Accounts", path, iface, member);
     if (rc >= 0)
-        rc = sd_bus_message_appendv(m, types, ap);
-    va_end(ap);
+        rc = sd_bus_message_appendv (m, types, ap);
+    va_end (ap);
 
     sd_bus_message* reply = nullptr;
     if (rc >= 0)
-        rc = sd_bus_call(bus, m, 5 * 1000000ULL, nullptr, &reply);
-    sd_bus_message_unref(m);
+        rc = sd_bus_call (bus, m, 5 * 1000000ULL, nullptr, &reply);
+    sd_bus_message_unref (m);
     if (rc < 0) {
-        sd_bus_message_unref(reply);
+        sd_bus_message_unref (reply);
         return nullptr;
     }
     return reply;
 }
 
 // FindUserById -> /org/freedesktop/Accounts/User<N>
-QString accountUserObjectPath() {
+std::string accountUserObjectPath() {
     sd_bus* bus = nullptr;
     if (sd_bus_open_system(&bus) < 0)
         return {};
 
-    QString path;
+    std::string path;
     sd_bus_message* reply = callAccounts(bus, "/org/freedesktop/Accounts", "org.freedesktop.Accounts",
-                                         "FindUserById", "x", static_cast<qint64>(getuid()));
+                                         "FindUserById", "x", static_cast<int64_t>(getuid()));
     if (reply != nullptr) {
         const char* object = nullptr;
         if (sd_bus_message_read(reply, "o", &object) >= 0 && object != nullptr)
-            path = QString::fromUtf8(object);
+            path = object;
         sd_bus_message_unref(reply);
     }
     sd_bus_flush_close_unref(bus);
@@ -126,37 +137,37 @@ QString accountUserObjectPath() {
 // accountsservice normalizes (copies) the wallpaper into
 // /var/lib/AccountsService/backgrounds — peony loads the normalized path at
 // startup, so callers need it back.
-QString getAccountBackground() {
-    const QString userPath = accountUserObjectPath();
-    if (userPath.isEmpty())
+std::string getAccountBackground() {
+    const std::string userPath = accountUserObjectPath();
+    if (userPath.empty())
         return {};
     sd_bus* bus = nullptr;
     if (sd_bus_open_system(&bus) < 0)
         return {};
 
-    QString result;
-    sd_bus_message* reply = callAccounts(bus, userPath.toUtf8().constData(), "org.freedesktop.DBus.Properties",
+    std::string result;
+    sd_bus_message* reply = callAccounts(bus, userPath.c_str(), "org.freedesktop.DBus.Properties",
                                          "Get", "ss", "org.freedesktop.Accounts.User", "BackgroundFile");
     if (reply != nullptr) {
         const char* background = nullptr;
         if (sd_bus_message_read(reply, "v", "s", &background) >= 0 && background != nullptr)
-            result = QString::fromUtf8(background);
+            result = background;
         sd_bus_message_unref(reply);
     }
     sd_bus_flush_close_unref(bus);
     return result;
 }
 
-void setAccountBackground(const QString& marker) {
-    const QString userPath = accountUserObjectPath();
-    if (userPath.isEmpty())
+void setAccountBackground(const std::string& marker) {
+    const std::string userPath = accountUserObjectPath();
+    if (userPath.empty())
         return;
     sd_bus* bus = nullptr;
     if (sd_bus_open_system(&bus) < 0)
         return;
-    sd_bus_call_method(bus, "org.freedesktop.Accounts", userPath.toUtf8().constData(),
+    sd_bus_call_method(bus, "org.freedesktop.Accounts", userPath.c_str(),
                        "org.freedesktop.Accounts.User", "SetBackgroundFile", nullptr, nullptr,
-                       "s", marker.toUtf8().constData());
+                       "s", marker.c_str());
     sd_bus_flush_close_unref(bus);
 }
 
@@ -164,35 +175,33 @@ void setAccountBackground(const QString& marker) {
 // irrelevant to the design (the shim nullifies the image at load time);
 // magenta only makes an unshimmed desktop obvious instead of silently dark.
 // libpng is guaranteed on the target — freetype itself links it.
-bool writeMarkerPng(const QString& path) {
+bool writeMarkerPng(const std::string& path) {
     constexpr int kSize = 64;
 
-    png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
-    if (png == nullptr)
+    FILE* file = fopen(path.c_str(), "wb");
+    if (file == nullptr)
         return false;
+
+    png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+    if (png == nullptr) {
+        fclose(file);
+        return false;
+    }
     png_infop info = png_create_info_struct(png);
     if (info == nullptr) {
         png_destroy_write_struct(&png, nullptr);
+        fclose(file);
         return false;
     }
 
-    QFile file(path);
     // libpng reports errors through longjmp back into this point
     if (setjmp(png_jmpbuf(png)) != 0) {
         png_destroy_write_struct(&png, &info);
-        return false;
-    }
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        png_destroy_write_struct(&png, &info);
+        fclose(file);
         return false;
     }
 
-    png_set_write_fn(png, &file, [](png_structp p, png_bytep data, png_size_t length) {
-        QFile* out = static_cast<QFile*>(png_get_io_ptr(p));
-        if (out->write(reinterpret_cast<const char*>(data), qint64(length)) != qint64(length))
-            png_error(p, "marker png: short write");
-    }, nullptr);
-
+    png_init_io(png, file);
     png_set_IHDR(png, info, kSize, kSize, 8, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE,
                  PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
     png_write_info(png, info);
@@ -208,12 +217,54 @@ bool writeMarkerPng(const QString& path) {
 
     png_write_end(png, info);
     png_destroy_write_struct(&png, &info);
-    return true;
+    const bool ok = ferror(file) == 0;
+    fclose(file);
+    return ok;
+}
+
+// fire-and-forget tool run; blocks until exit, result ignored — the shape
+// QProcess::execute() gave the gsettings call
+void runTool(const std::string& program, const std::vector<std::string>& args) {
+    const pid_t pid = fork();
+    if (pid < 0)
+        return;
+    if (pid == 0) {
+        std::vector<char*> argv { const_cast<char*> (program.c_str ()) };
+        for (const std::string& arg : args)
+            argv.push_back (const_cast<char*> (arg.c_str ()));
+        argv.push_back (nullptr);
+        execvp(program.c_str(), argv.data());
+        _exit(127); // exec failed
+    }
+    int status = 0;
+    waitpid(pid, &status, 0);
 }
 
 } // namespace
 
 namespace Integration {
+
+// Locate libpeony-alpha-shim.so: probe the frontend binary's own directory
+// (build tree, and layouts that ship the pair together), the library
+// directory a bin/ + lib/ install() layout produces, then the standard
+// system library paths. Returns an empty string when nothing matches.
+std::string locateShim() {
+    const std::string name = "libpeony-alpha-shim.so";
+    std::vector<std::string> candidates;
+    const std::string appDir = lwe::exeDir();
+    if (!appDir.empty()) {
+        candidates.push_back(appDir + "/" + name);          // build tree, sibling of the frontend
+        candidates.push_back(appDir + "/../lib/" + name);   // install() layout: bin/ + lib/
+        candidates.push_back(appDir + "/../lib64/" + name);
+    }
+    candidates.push_back("/usr/lib/" + name);
+    candidates.push_back("/usr/local/lib/" + name);
+    candidates.push_back("/usr/lib/x86_64-linux-gnu/" + name);
+    for (const std::string& candidate : candidates)
+        if (fs::exists(candidate))
+            return candidate;
+    return {};
+}
 
 Status detect() {
     Status status;
@@ -223,32 +274,15 @@ Status detect() {
     return status;
 }
 
-QString locateShim() {
-    const QString name = QStringLiteral("libpeony-alpha-shim.so");
-    QStringList candidates;
-    if (QCoreApplication::instance() != nullptr) {
-        const QString appDir = QCoreApplication::applicationDirPath();
-        candidates << appDir + "/" + name          // build tree, sibling of the frontend
-                   << appDir + "/../lib/" + name   // install() layout: bin/ + lib/
-                   << appDir + "/../lib64/" + name;
-    }
-    candidates << "/usr/lib/" + name
-               << "/usr/local/lib/" + name
-               << "/usr/lib/x86_64-linux-gnu/" + name;
-    for (const QString& candidate : candidates)
-        if (QFile::exists(candidate))
-            return candidate;
-    return QString();
-}
-
-bool setup(QString* error) {
+bool setup(std::string* error) {
     // ---- 1. marker wallpaper; accountsservice and gsettings point at it.
     // The shim nullifies the pixmap at load time, so the color is irrelevant
     // (magenta makes an unshimmed desktop obvious instead of silently dark).
-    QDir().mkpath(dataDir());
-    QFile(dataDir() + "/peony-shim.log").remove(); // fresh log per setup
+    std::error_code fsEc;
+    fs::create_directories(dataDir(), fsEc);
+    fs::remove(dataDir() + "/peony-shim.log", fsEc); // fresh log per setup
 
-    const QString marker = markerPath();
+    const std::string marker = markerPath();
     if (!writeMarkerPng(marker)) {
         if (error)
             *error = "cannot write marker wallpaper to " + marker;
@@ -257,37 +291,40 @@ bool setup(QString* error) {
 
     // remember the pre-change wallpaper too: if the accountsservice write
     // fails, peony still loads the OLD path and the shim must match it
-    const QString previousBackground = getAccountBackground();
+    const std::string previousBackground = getAccountBackground();
 
     setAccountBackground(marker);
-    const QString normalized = getAccountBackground();
-    QProcess::execute("gsettings", { "set", "org.mate.background", "picture-filename", marker });
+    const std::string normalized = getAccountBackground();
+    runTool("gsettings", { "set", "org.mate.background", "picture-filename", marker });
 
     // peony loads the accountsservice-normalized path at startup; gsettings
     // is what switchBackground() reads on wallpaper changes. Collect every
     // candidate path — the shim matches exact paths, basenames, and anything
     // under the accountsservice store anyway.
-    QString wallpaperList = marker;
-    if (!normalized.isEmpty() && normalized != marker)
+    std::string wallpaperList = marker;
+    if (!normalized.empty() && normalized != marker)
         wallpaperList = normalized + ":" + wallpaperList;
-    if (!previousBackground.isEmpty() && !wallpaperList.contains(previousBackground))
+    if (!previousBackground.empty() && wallpaperList.find(previousBackground) == std::string::npos)
         wallpaperList = previousBackground + ":" + wallpaperList;
 
     // ---- 2. stop peony and wait for a real exit; a lingering process holds
     // the single-instance lock and our injected instance would bail out.
-    for (const qint64 pid : findPeonyPids())
-        ::kill(pid, SIGTERM);
+    for (const int64_t pid : findPeonyPids())
+        ::kill(static_cast<pid_t>(pid), SIGTERM);
     if (!waitForPeonyExit(3000)) {
-        for (const qint64 pid : findPeonyPids())
-            ::kill(pid, SIGKILL);
-        QThread::msleep(300);
+        for (const int64_t pid : findPeonyPids())
+            ::kill(static_cast<pid_t>(pid), SIGKILL);
+        lwe::sleepMs(300);
     }
 
     // ---- 3. clear stale single-instance locks and relaunch with the shim
     // preloaded (systemd-run keeps it injected across crashes).
-    QDir tmp("/tmp");
-    for (const QString& lock : tmp.entryList(QStringList() << "qtsingleapp-peonyq*"))
-        tmp.remove(lock);
+    std::error_code iterEc;
+    for (const fs::directory_entry& entry : fs::directory_iterator("/tmp", iterEc)) {
+        const std::string lock = entry.path().filename().string();
+        if (lock.rfind("qtsingleapp-peonyq", 0) == 0)
+            fs::remove(entry.path(), fsEc);
+    }
 
     // launch through the typed systemd layer: transient unit with
     // Restart=on-failure — if peony dies, systemd restarts it WITH the
@@ -298,20 +335,19 @@ bool setup(QString* error) {
     peonyUnit.stop();
     peonyUnit.resetFailed();
 
-    const QString shimPath = locateShim();
-    if (shimPath.isEmpty()) {
+    const std::string shimPath = locateShim();
+    if (shimPath.empty()) {
         if (error)
-            *error = QString("libpeony-alpha-shim.so not found next to the frontend or in the standard "
-                             "library paths (looked in %1)")
-                         .arg(QCoreApplication::applicationDirPath());
+            *error = "libpeony-alpha-shim.so not found next to the frontend or in the standard "
+                     "library paths (looked in " + lwe::exeDir() + ")";
         return false;
     }
-    const QString logPath = dataDir() + "/peony-shim.log";
+    const std::string logPath = dataDir() + "/peony-shim.log";
     SystemdLayer::Error unitError;
-    QMap<QString, QString> peonyEnv;
-    peonyEnv.insert("LD_PRELOAD", shimPath);
-    peonyEnv.insert("PEONY_ALPHA_WALLPAPER", wallpaperList);
-    peonyEnv.insert("PEONY_ALPHA_LOG", logPath);
+    std::map<std::string, std::string> peonyEnv;
+    peonyEnv["LD_PRELOAD"] = shimPath;
+    peonyEnv["PEONY_ALPHA_WALLPAPER"] = wallpaperList;
+    peonyEnv["PEONY_ALPHA_LOG"] = logPath;
     if (!peonyUnit.startTransient({ "/usr/bin/peony-qt-desktop", "-w", "-d" }, peonyEnv, {}, &unitError)) {
         if (error)
             *error = "transient launch failed: " + unitError.message;
@@ -320,8 +356,8 @@ bool setup(QString* error) {
 
     // ---- 4. verify the shim actually mapped into the new instance
     for (int waited = 0; waited < 10000; waited += 300) {
-        QThread::msleep(300);
-        const qint64 pid = findPeonyPid();
+        lwe::sleepMs(300);
+        const int64_t pid = findPeonyPid();
         if (pid == 0)
             continue;
         if (shimMapped(pid)) {

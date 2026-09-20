@@ -1,20 +1,20 @@
 #include "systemdunit.h"
 #include "unitbuilder.h"
 
-#include <QVariant>
-#include <utility>
-
 #include <systemd/sd-bus.h>
 
 #include <cstdarg>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <type_traits>
+#include <utility>
 
-// The systemd user manager addressed through the sd-bus C API directly —
-// no QtDBus in this layer. One operation = one bus connection = one round
-// trip; the manager holds no per-client state worth keeping a connection
-// alive for (the previous live-change subscription was removed as dead
-// code; state is polled through activeState()).
+// The systemd user manager addressed through the sd-bus C API directly.
+// One operation = one bus connection = one round trip; the manager holds no
+// per-client state worth keeping a connection alive for (the previous
+// live-change subscription was removed as dead code; state is polled
+// through activeState()).
 
 namespace SystemdLayer {
 
@@ -29,7 +29,7 @@ sd_bus* openUserBus (Error* error) {
     if (sd_bus_open_user (&bus) < 0) {
         if (error) {
             error->kind = Error::BusUnreachable;
-            error->message = QStringLiteral ("cannot connect to the user bus");
+            error->message = "cannot connect to the user bus";
         }
         return nullptr;
     }
@@ -42,12 +42,12 @@ void takeError (int rc, const sd_bus_error& err, Error* error) {
     if (error == nullptr)
         return;
     if (err.name != nullptr) {
-        error->dbusName = QString::fromUtf8 (err.name);
-        error->message = QString::fromUtf8 (err.message);
+        error->dbusName = err.name;
+        error->message = err.message != nullptr ? err.message : "";
         error->kind = std::strstr (err.name, "NoSuchUnit") != nullptr ? Error::NoSuchUnit : Error::Unknown;
     } else {
         error->kind = Error::Unknown;
-        error->message = QString::fromUtf8 (std::strerror (-rc));
+        error->message = std::strerror (-rc);
     }
 }
 
@@ -88,45 +88,52 @@ bool daemonReload (Error* error) {
 
 bool tolerated (const Error& error) {
     return error.kind == Error::NoError || error.kind == Error::NoSuchUnit ||
-           error.message.contains ("not loaded");
+           error.message.find ("not loaded") != std::string::npos;
 }
 
-QString unitObjectPathFromId (const QString& unitId) {
+std::string unitObjectPathFromId (const std::string& unitId) {
     // systemd escapes every non [A-Za-z0-9] byte of the unit id as _XX
-    QString escaped;
-    for (const char c : unitId.toLatin1 ()) {
+    std::string escaped;
+    char hex[5];
+    for (const char c : unitId) {
         const unsigned char u = static_cast<unsigned char> (c);
         if ((u >= 'A' && u <= 'Z') || (u >= 'a' && u <= 'z') || (u >= '0' && u <= '9'))
             escaped += c;
-        else
-            escaped += QString ("_%1").arg (u, 2, 16, QLatin1Char ('0'));
+        else {
+            std::snprintf (hex, sizeof hex, "_%02x", u);
+            escaped += hex;
+        }
     }
-    return QString ("/org/freedesktop/systemd1/unit/%1").arg (escaped);
+    return "/org/freedesktop/systemd1/unit/" + escaped;
 }
 
-SystemdUnit::SystemdUnit (QString unitName) : m_unitName (std::move (unitName)) {
+SystemdUnit::SystemdUnit (std::string unitName) : m_unitName (std::move (unitName)) {
     // accept a bare name the way systemctl does: the D-Bus manager requires
     // a full unit id with the type suffix, so "linux-wallpaperengine"
     // becomes "linux-wallpaperengine.service"
-    if (!this->m_unitName.contains ('.'))
-        this->m_unitName += ".service";
+    if (m_unitName.find ('.') == std::string::npos)
+        m_unitName += ".service";
 }
 
 SystemdUnit::~SystemdUnit () {}
 
-QString SystemdUnit::unitName () const { return m_unitName; }
+std::string SystemdUnit::unitName () const { return m_unitName; }
 
-// Marshal one caller-chosen scalar into an in-message variant; string is the
-// fallback — nothing in this codebase passes exotic property types.
-int appendQVariant (sd_bus_message* m, const QVariant& value) {
-    switch (value.type ()) {
-    case QVariant::Bool: return sd_bus_message_append (m, "v", "b", int (value.toBool ()));
-    case QVariant::Int: return sd_bus_message_append (m, "v", "i", value.toInt ());
-    case QVariant::UInt: return sd_bus_message_append (m, "v", "u", value.toUInt ());
-    case QVariant::LongLong: return sd_bus_message_append (m, "v", "x", value.toLongLong ());
-    case QVariant::Double: return sd_bus_message_append (m, "v", "d", value.toDouble ());
-    default: return sd_bus_message_append (m, "v", "s", value.toString ().toUtf8 ().constData ());
-    }
+// Marshal one caller-chosen scalar into an in-message variant.
+int appendPropertyValue (sd_bus_message* m, const UnitPropertyValue& value) {
+    return std::visit (
+        [m] (const auto& v) -> int {
+            using T = std::decay_t<decltype (v)>;
+            if constexpr (std::is_same_v<T, std::string>)
+                return sd_bus_message_append (m, "v", "s", v.c_str ());
+            else if constexpr (std::is_same_v<T, bool>)
+                return sd_bus_message_append (m, "v", "b", int (v));
+            else if constexpr (std::is_same_v<T, int64_t>)
+                return sd_bus_message_append (m, "v", "x", v);
+            else
+                return sd_bus_message_append (m, "v", "d", v);
+        },
+        value);
 }
 
 // Append the ExecStart=(sasb) property: one entry carrying the full argv,
@@ -137,13 +144,12 @@ int appendExecStart (sd_bus_message* m, const ExecCommand& command) {
     if (rc >= 0) rc = sd_bus_message_open_container (m, SD_BUS_TYPE_VARIANT, "a(sasb)");
     if (rc >= 0) rc = sd_bus_message_open_container (m, SD_BUS_TYPE_ARRAY, "(sasb)");
     if (rc >= 0) rc = sd_bus_message_open_container (m, SD_BUS_TYPE_STRUCT, "sasb");
-    if (rc >= 0) rc = sd_bus_message_append (m, "s", command.program.toUtf8 ().constData ());
+    if (rc >= 0) rc = sd_bus_message_append (m, "s", command.program.c_str ());
     if (rc >= 0) rc = sd_bus_message_open_container (m, SD_BUS_TYPE_ARRAY, "s");
-    for (const QString& arg : command.args) {
+    for (const std::string& arg : command.args) {
         if (rc < 0)
             break;
-        const QByteArray utf8 = arg.toUtf8 ();
-        rc = sd_bus_message_append (m, "s", utf8.constData ());
+        rc = sd_bus_message_append (m, "s", arg.c_str ());
     }
     if (rc >= 0) rc = sd_bus_message_close_container (m); // argv
     if (rc >= 0) rc = sd_bus_message_append (m, "b", 0);  // ignore-failure flag
@@ -154,9 +160,10 @@ int appendExecStart (sd_bus_message* m, const ExecCommand& command) {
     return rc;
 }
 
-bool SystemdUnit::startTransient (const QStringList& execArgs, const QMap<QString, QString>& environment,
-                                  const QMap<QString, QVariant>& extraProperties, Error* error) {
-    if (execArgs.isEmpty ()) {
+bool SystemdUnit::startTransient (const std::vector<std::string>& execArgs,
+                                  const std::map<std::string, std::string>& environment,
+                                  const std::map<std::string, UnitPropertyValue>& extraProperties, Error* error) {
+    if (execArgs.empty ()) {
         if (error) {
             error->kind = Error::InvalidInput;
             error->message = "empty argv";
@@ -166,10 +173,10 @@ bool SystemdUnit::startTransient (const QStringList& execArgs, const QMap<QStrin
 
     // environment via /usr/bin/env prefix: systemd's transient Environment
     // property is not reliably applied to the exec'd process on all versions
-    QStringList finalArgs { "/usr/bin/env" };
-    for (auto it = environment.begin (); it != environment.end (); ++it)
-        finalArgs << it.key () + "=" + it.value ();
-    finalArgs << execArgs;
+    std::vector<std::string> finalArgs { "/usr/bin/env" };
+    for (const auto& [key, value] : environment)
+        finalArgs.push_back (key + "=" + value);
+    finalArgs.insert (finalArgs.end (), execArgs.begin (), execArgs.end ());
 
     const ExecCommand command = toExecCommand (finalArgs);
 
@@ -180,22 +187,24 @@ bool SystemdUnit::startTransient (const QStringList& execArgs, const QMap<QStrin
     // a stale failed unit with the same name blocks re-creation ("already
     // exists") — clear it first; a not-loaded unit is a harmless no-op
     sd_bus_call_method (bus, kService, kManagerPath, kManagerIface, "ResetFailedUnit", nullptr, nullptr, "s",
-                        m_unitName.toUtf8 ().constData ());
+                        m_unitName.c_str ());
 
     sd_bus_message* m = nullptr;
     if (sd_bus_message_new_method_call (bus, &m, kService, kManagerPath, kManagerIface, "StartTransientUnit") < 0)
         m = nullptr;
 
     int rc = -1;
-    if (m != nullptr) rc = sd_bus_message_append (m, "ss", m_unitName.toUtf8 ().constData (), "replace");
+    if (m != nullptr) rc = sd_bus_message_append (m, "ss", m_unitName.c_str (), "replace");
     if (rc >= 0) rc = sd_bus_message_open_container (m, SD_BUS_TYPE_ARRAY, "(sv)");
     if (rc >= 0) rc = sd_bus_message_append (m, "(sv)", "Description", "s", "wallpaper transient unit");
     if (rc >= 0) rc = sd_bus_message_append (m, "(sv)", "Type", "s", "simple");
     if (rc >= 0) rc = sd_bus_message_append (m, "(sv)", "Restart", "s", "on-failure");
-    for (auto it = extraProperties.begin (); rc >= 0 && it != extraProperties.end (); ++it) {
+    for (const auto& [key, value] : extraProperties) {
+        if (rc < 0)
+            break;
         rc = sd_bus_message_open_container (m, SD_BUS_TYPE_STRUCT, "sv");
-        if (rc >= 0) rc = sd_bus_message_append (m, "s", it.key ().toUtf8 ().constData ());
-        if (rc >= 0) rc = appendQVariant (m, it.value ());
+        if (rc >= 0) rc = sd_bus_message_append (m, "s", key.c_str ());
+        if (rc >= 0) rc = appendPropertyValue (m, value);
         if (rc >= 0) rc = sd_bus_message_close_container (m);
     }
     if (rc >= 0) rc = appendExecStart (m, command);
@@ -216,7 +225,7 @@ bool SystemdUnit::startTransient (const QStringList& execArgs, const QMap<QStrin
         sd_bus_error_free (&err);
     } else if (error != nullptr) {
         error->kind = Error::Unknown;
-        error->message = QString::fromUtf8 (std::strerror (-rc));
+        error->message = std::strerror (-rc);
     }
     sd_bus_message_unref (m);
     sd_bus_flush_close_unref (bus);
@@ -224,15 +233,15 @@ bool SystemdUnit::startTransient (const QStringList& execArgs, const QMap<QStrin
 }
 
 bool SystemdUnit::start (Error* error) {
-    return callManager ("StartUnit", "ss", error, m_unitName.toUtf8 ().constData (), "replace");
+    return callManager ("StartUnit", "ss", error, m_unitName.c_str (), "replace");
 }
 
 bool SystemdUnit::stop (Error* error) {
-    return callManager ("StopUnit", "ss", error, m_unitName.toUtf8 ().constData (), "replace");
+    return callManager ("StopUnit", "ss", error, m_unitName.c_str (), "replace");
 }
 
 bool SystemdUnit::restart (Error* error) {
-    return callManager ("RestartUnit", "ss", error, m_unitName.toUtf8 ().constData (), "replace");
+    return callManager ("RestartUnit", "ss", error, m_unitName.c_str (), "replace");
 }
 
 bool SystemdUnit::resetFailed (Error* error) {
@@ -240,36 +249,35 @@ bool SystemdUnit::resetFailed (Error* error) {
     // systemd errors on it, but callers mean "make sure it can start", so
     // that outcome is success
     Error local;
-    callManager ("ResetFailedUnit", "s", &local, m_unitName.toUtf8 ().constData ());
+    callManager ("ResetFailedUnit", "s", &local, m_unitName.c_str ());
     if (tolerated (local))
         local = {};
     if (error) *error = local;
     return local.kind == Error::NoError;
 }
 
-QString SystemdUnit::activeState (Error* error) const {
+std::string SystemdUnit::activeState (Error* error) const {
     sd_bus* bus = openUserBus (error);
     if (bus == nullptr)
-        return QStringLiteral ("unknown");
+        return "unknown";
 
     sd_bus_error err = SD_BUS_ERROR_NULL;
     char* state = nullptr;
-    const QByteArray path = unitObjectPathFromId (m_unitName).toUtf8 ();
-    const int rc = sd_bus_get_property_string (bus, kService, path.constData (), kUnitIface, "ActiveState", &err,
-                                               &state);
+    const int rc = sd_bus_get_property_string (bus, kService, unitObjectPathFromId (m_unitName).c_str (), kUnitIface,
+                                               "ActiveState", &err, &state);
 
-    QString result;
+    std::string result;
     if (rc < 0) {
         // a known unit that is not loaded yet reads as inactive
         if (err.name != nullptr &&
             (std::strstr (err.name, "UnknownInterface") != nullptr || std::strstr (err.name, "NoSuchUnit") != nullptr))
-            result = QStringLiteral ("inactive");
+            result = "inactive";
         else {
-            result = QStringLiteral ("unknown");
+            result = "unknown";
             takeError (rc, err, error);
         }
     } else {
-        result = QString::fromUtf8 (state != nullptr ? state : "unknown");
+        result = state != nullptr ? state : "unknown";
     }
     free (state);
     sd_bus_error_free (&err);

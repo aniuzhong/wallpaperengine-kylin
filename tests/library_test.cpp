@@ -3,22 +3,23 @@
 // paths; decoding is a frontend concern).
 #include "../src/service/library.h"
 
-#include <QDir>
-#include <QFile>
 #include <QTemporaryDir>
-
-#include <memory>
 #include <QtTest>
+
+#include <filesystem>
+#include <fstream>
+#include <memory>
+
+namespace fs = std::filesystem;
 
 namespace {
 
-void put (const QString& path, const QByteArray& content) {
-    QFile file (path);
-    QVERIFY (file.open (QIODevice::WriteOnly));
-    QCOMPARE (file.write (content), qint64 (content.size ()));
+void put (const std::string& path, const std::string& content) {
+    std::ofstream file (path, std::ios::trunc);
+    QVERIFY (file.is_open ());
+    file << content;
+    QVERIFY (file.good ());
 }
-
-QByteArray projectJson (const char* json) { return QByteArray (json); }
 
 } // namespace
 
@@ -34,65 +35,65 @@ private slots:
     }
 
     void scan_readsFullMetadata () {
-        const QString dir = m_workshop->path () + "/entry-a";
-        QVERIFY (QDir ().mkpath (dir));
-        const QByteArray json = R"({"title": "Beta Wall", "type": "scene", "preview": "cover.png"})";
+        const std::string dir = (m_workshop->path () + "/entry-a").toStdString ();
+        QVERIFY (fs::create_directories (dir));
+        const std::string json = R"({"title": "Beta Wall", "type": "scene", "preview": "cover.png"})";
         put (dir + "/project.json", json);
-        put (dir + "/cover.png", QByteArray (4096, 'x'));
-        put (dir + "/nested.bin", QByteArray (512, 'y')); // size walks subdirectories too
-        const qint64 expectedSize = json.size () + 4096 + 512;
+        put (dir + "/cover.png", std::string (4096, 'x'));
+        put (dir + "/nested.bin", std::string (512, 'y')); // size walks subdirectories too
+        const uint64_t expectedSize = json.size () + 4096 + 512;
 
-        const QList<WallpaperEntry> entries = scanLibrary (m_workshop->path ());
-        QCOMPARE (entries.size (), 1);
-        QCOMPARE (entries.first ().id, QString ("entry-a"));
-        QCOMPARE (entries.first ().title, QString ("Beta Wall"));
-        QCOMPARE (entries.first ().type, QString ("scene"));
-        QCOMPARE (entries.first ().previewPath, dir + "/cover.png");
-        QCOMPARE (qint64 (entries.first ().sizeBytes), expectedSize);
+        const std::vector<WallpaperEntry> entries = scanLibrary (m_workshop->path ().toStdString ());
+        QCOMPARE (entries.size (), size_t (1));
+        QCOMPARE (entries.front ().id, std::string ("entry-a"));
+        QCOMPARE (entries.front ().title, std::string ("Beta Wall"));
+        QCOMPARE (entries.front ().type, std::string ("scene"));
+        QCOMPARE (entries.front ().previewPath, dir + "/cover.png");
+        QCOMPARE (entries.front ().sizeBytes, expectedSize);
     }
 
     void scan_fallsBackToPreviewJpg () {
-        const QString dir = m_workshop->path () + "/entry-b";
-        QVERIFY (QDir ().mkpath (dir));
-        put (dir + "/project.json", projectJson (R"({"title": "Jpg Fallback"})"));
-        put (dir + "/preview.jpg", QByteArray (16, 'p'));
+        const std::string dir = (m_workshop->path () + "/entry-b").toStdString ();
+        QVERIFY (fs::create_directories (dir));
+        put (dir + "/project.json", R"({"title": "Jpg Fallback"})");
+        put (dir + "/preview.jpg", std::string (16, 'p'));
 
-        const QList<WallpaperEntry> entries = scanLibrary (m_workshop->path ());
-        QCOMPARE (entries.size (), 1);
-        QCOMPARE (entries.first ().previewPath, dir + "/preview.jpg");
+        const std::vector<WallpaperEntry> entries = scanLibrary (m_workshop->path ().toStdString ());
+        QCOMPARE (entries.size (), size_t (1));
+        QCOMPARE (entries.front ().previewPath, dir + "/preview.jpg");
     }
 
     void scan_absentPreviewYieldsEmptyPath () {
-        const QString dir = m_workshop->path () + "/entry-c";
-        QVERIFY (QDir ().mkpath (dir));
-        put (dir + "/project.json", projectJson (R"({"title": "No Preview", "preview": "missing.png"})"));
+        const std::string dir = (m_workshop->path () + "/entry-c").toStdString ();
+        QVERIFY (fs::create_directories (dir));
+        put (dir + "/project.json", R"({"title": "No Preview", "preview": "missing.png"})");
 
-        const QList<WallpaperEntry> entries = scanLibrary (m_workshop->path ());
-        QCOMPARE (entries.size (), 1);
-        QVERIFY (entries.first ().previewPath.isEmpty ());
+        const std::vector<WallpaperEntry> entries = scanLibrary (m_workshop->path ().toStdString ());
+        QCOMPARE (entries.size (), size_t (1));
+        QVERIFY (entries.front ().previewPath.empty ());
     }
 
     void scan_skipsDirectoriesWithoutProjectJson () {
-        QVERIFY (QDir ().mkpath (m_workshop->path () + "/plain-dir"));
-        put (m_workshop->path () + "/plain-dir/preview.jpg", QByteArray (8, 'p'));
-        const QString withProject = m_workshop->path () + "/real-entry";
-        QVERIFY (QDir ().mkpath (withProject));
-        put (withProject + "/project.json", projectJson (R"({"title": "Real"})"));
+        QVERIFY (fs::create_directories ((m_workshop->path () + "/plain-dir").toStdString ()));
+        put ((m_workshop->path () + "/plain-dir/preview.jpg").toStdString (), std::string (8, 'p'));
+        const std::string withProject = (m_workshop->path () + "/real-entry").toStdString ();
+        QVERIFY (fs::create_directories (withProject));
+        put (withProject + "/project.json", R"({"title": "Real"})");
 
-        const QList<WallpaperEntry> entries = scanLibrary (m_workshop->path ());
-        QCOMPARE (entries.size (), 1);
-        QCOMPARE (entries.first ().id, QString ("real-entry"));
+        const std::vector<WallpaperEntry> entries = scanLibrary (m_workshop->path ().toStdString ());
+        QCOMPARE (entries.size (), size_t (1));
+        QCOMPARE (entries.front ().id, std::string ("real-entry"));
     }
 
     void scan_defaultsTitleToIdAndTypeToUnknown () {
-        const QString dir = m_workshop->path () + "/bare";
-        QVERIFY (QDir ().mkpath (dir));
-        put (dir + "/project.json", projectJson ("{}"));
+        const std::string dir = (m_workshop->path () + "/bare").toStdString ();
+        QVERIFY (fs::create_directories (dir));
+        put (dir + "/project.json", "{}");
 
-        const QList<WallpaperEntry> entries = scanLibrary (m_workshop->path ());
-        QCOMPARE (entries.size (), 1);
-        QCOMPARE (entries.first ().title, QString ("bare"));
-        QCOMPARE (entries.first ().type, QString ("unknown"));
+        const std::vector<WallpaperEntry> entries = scanLibrary (m_workshop->path ().toStdString ());
+        QCOMPARE (entries.size (), size_t (1));
+        QCOMPARE (entries.front ().title, std::string ("bare"));
+        QCOMPARE (entries.front ().type, std::string ("unknown"));
     }
 
     void scan_sortsByTitleCaseInsensitive () {
@@ -102,19 +103,19 @@ private slots:
             { "a-dir", "apple" }, // case-insensitively before Zebra
         };
         for (const auto& c : cases) {
-            const QString dir = m_workshop->path () + "/" + c.dir;
-            QVERIFY (QDir ().mkpath (dir));
-            put (dir + "/project.json", projectJson (QByteArray (R"({"title": ")") + c.title + "\"}"));
+            const std::string dir = (m_workshop->path () + "/" + c.dir).toStdString ();
+            QVERIFY (fs::create_directories (dir));
+            put (dir + "/project.json", std::string (R"({"title": ")") + c.title + "\"}");
         }
 
-        const QList<WallpaperEntry> entries = scanLibrary (m_workshop->path ());
-        QCOMPARE (entries.size (), 2);
-        QCOMPARE (entries.at (0).title, QString ("apple"));
-        QCOMPARE (entries.at (1).title, QString ("Zebra"));
+        const std::vector<WallpaperEntry> entries = scanLibrary (m_workshop->path ().toStdString ());
+        QCOMPARE (entries.size (), size_t (2));
+        QCOMPARE (entries.at (0).title, std::string ("apple"));
+        QCOMPARE (entries.at (1).title, std::string ("Zebra"));
     }
 
     void scan_missingRootYieldsEmpty () {
-        QVERIFY (scanLibrary (m_workshop->path () + "/does-not-exist").isEmpty ());
+        QVERIFY (scanLibrary ((m_workshop->path () + "/does-not-exist").toStdString ()).empty ());
     }
 
 private:

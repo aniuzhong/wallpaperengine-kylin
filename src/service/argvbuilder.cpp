@@ -1,54 +1,68 @@
 #include "argvbuilder.h"
 
-QStringList buildArgv(const Config& config) {
-    QStringList argv;
-    argv << config.enginePath;
+#include <algorithm>
 
-    if (!config.assetsDir.isEmpty())
-        argv << "--assets-dir" << config.assetsDir;
+std::vector<std::string> buildArgv(const Config& config) {
+    std::vector<std::string> argv { config.enginePath };
 
-    for (auto it = config.screens.begin(); it != config.screens.end(); ++it) {
-        argv << "--screen-root" << it.key() << "--bg" << it.value();
-        if (!config.scaling.isEmpty())
-            argv << "--scaling" << config.scaling;
-        if (!config.clamp.isEmpty())
-            argv << "--clamp" << config.clamp;
+    if (!config.assetsDir.empty()) {
+        argv.push_back("--assets-dir");
+        argv.push_back(config.assetsDir);
     }
 
-    argv << "--fps" << QString::number(config.fps);
+    for (const auto& [screen, wallpaper] : config.screens) {
+        argv.push_back("--screen-root");
+        argv.push_back(screen);
+        argv.push_back("--bg");
+        argv.push_back(wallpaper);
+        if (!config.scaling.empty()) {
+            argv.push_back("--scaling");
+            argv.push_back(config.scaling);
+        }
+        if (!config.clamp.empty()) {
+            argv.push_back("--clamp");
+            argv.push_back(config.clamp);
+        }
+    }
+
+    argv.push_back("--fps");
+    argv.push_back(std::to_string(config.fps));
     if (!config.fullscreenPause)
-        argv << "--no-fullscreen-pause";
+        argv.push_back("--no-fullscreen-pause");
     if (!config.automute)
-        argv << "--noautomute";
+        argv.push_back("--noautomute");
     if (!config.audioProcessing)
-        argv << "--no-audio-processing";
+        argv.push_back("--no-audio-processing");
 
     if (config.silent)
-        argv << "--silent";
-    else
-        argv << "--volume" << QString::number(config.volume);
+        argv.push_back("--silent");
+    else {
+        argv.push_back("--volume");
+        argv.push_back(std::to_string(config.volume));
+    }
 
     if (config.disableParticles)
-        argv << "--disable-particles";
+        argv.push_back("--disable-particles");
     if (config.disableMouse)
-        argv << "--disable-mouse";
+        argv.push_back("--disable-mouse");
     if (config.disableParallax)
-        argv << "--disable-parallax";
+        argv.push_back("--disable-parallax");
 
     // only pass properties belonging to a wallpaper that is actually being
     // launched: shared property names (schemecolor, ...) must not leak from
     // one wallpaper into another
-    QStringList activeIds;
-    for (auto screenIt = config.screens.begin(); screenIt != config.screens.end(); ++screenIt)
-        if (!activeIds.contains(screenIt.value()))
-            activeIds << screenIt.value();
+    std::vector<std::string> activeIds;
+    for (const auto& [screen, wallpaper] : config.screens)
+        if (std::find(activeIds.begin(), activeIds.end(), wallpaper) == activeIds.end())
+            activeIds.push_back(wallpaper);
 
-    for (auto wallIt = config.properties.begin(); wallIt != config.properties.end(); ++wallIt) {
-        if (!activeIds.contains(wallIt.key()))
+    for (const auto& [wallpaperId, props] : config.properties) {
+        if (std::find(activeIds.begin(), activeIds.end(), wallpaperId) == activeIds.end())
             continue;
-        const QVariantMap props = wallIt.value().toMap();
-        for (auto propIt = props.begin(); propIt != props.end(); ++propIt)
-            argv << "--set-property" << propIt.key() + "=" + propIt.value().toString();
+        for (const auto& [key, value] : props) {
+            argv.push_back("--set-property");
+            argv.push_back(key + "=" + value);
+        }
     }
 
     return argv;

@@ -13,6 +13,15 @@ pkg_check_modules(XCB_RANDR REQUIRED xcb-randr)
 pkg_check_modules(PNG REQUIRED libpng)
 pkg_check_modules(LIBSYSTEMD REQUIRED libsystemd)
 
+# JSON for the config file: fetched at configure time, pinned to a release
+# tag — git over HTTPS, the same path the engine fetch uses.
+include(FetchContent)
+FetchContent_Declare(nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.11.3
+    GIT_SHALLOW TRUE)
+FetchContent_MakeAvailable(nlohmann_json)
+
 # ---- wallpaper_service
 # Control core (frontend-free): the generic systemd D-Bus client plus the
 # wallpaper domain logic (config persistence, argv mapping, library scan,
@@ -28,7 +37,7 @@ add_library(wallpaper_service STATIC
     src/service/engineunit.cpp
 )
 target_include_directories(wallpaper_service PUBLIC src/service src/service/systemd ${XCB_RANDR_INCLUDE_DIRS} ${PNG_INCLUDE_DIRS})
-target_link_libraries(wallpaper_service PUBLIC Qt5::Core ${XCB_LIBRARIES} ${XCB_RANDR_LIBRARIES} ${PNG_LIBRARIES} ${LIBSYSTEMD_LIBRARIES})
+target_link_libraries(wallpaper_service PUBLIC Qt5::Core nlohmann_json::nlohmann_json ${XCB_LIBRARIES} ${XCB_RANDR_LIBRARIES} ${PNG_LIBRARIES} ${LIBSYSTEMD_LIBRARIES})
 target_compile_options(wallpaper_service PRIVATE -Wall -Wextra)
 
 # ---- wallpaper-engine
