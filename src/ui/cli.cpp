@@ -180,6 +180,10 @@ int cmdDoctor () {
     std::printf ("peony: pid=%lld %s\n", static_cast<long long> (peony.peonyPid),
                  peony.peonyPid > 0 ? (peony.shimLoaded ? "injected" : "running WITHOUT shim") : "not running");
 
+    const QString shimPath = Integration::locateShim ();
+    std::printf ("shim: %s\n", shimPath.isEmpty () ? "libpeony-alpha-shim.so (MISSING)"
+                                                    : shimPath.toUtf8 ().constData ());
+
     std::printf ("unit %s: %s, unit file %s\n", EngineUnit::unitName ().toUtf8 ().constData (),
                  EngineUnit::unitState ().toUtf8 ().constData (), EngineUnit::unitPath ().toUtf8 ().constData ());
     return EXIT_OK;

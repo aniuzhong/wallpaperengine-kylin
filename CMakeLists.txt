@@ -49,7 +49,7 @@ target_compile_options(wallpaper-engine PRIVATE -Wall -Wextra)
 # carry explicit visibility attributes in the source; Qt symbols resolve
 # from the host process at load time, hence they are not linked here.
 add_library(peony-alpha-shim SHARED
-    src/shim/peony-alpha-shim.cpp
+    src/hook/peony-alpha-shim.cpp
 )
 target_compile_options(peony-alpha-shim PRIVATE -O2 -Wall -fPIC -fvisibility=hidden)
 target_include_directories(peony-alpha-shim PRIVATE ${Qt5Gui_INCLUDE_DIRS} ${X11_INCLUDE_DIR} ${XCB_INCLUDE_DIRS})

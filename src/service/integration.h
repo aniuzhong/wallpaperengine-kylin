@@ -21,6 +21,13 @@ struct Status {
 // mapped into it.
 Status detect ();
 
+// Locate libpeony-alpha-shim.so on disk: probe the frontend binary's own
+// directory (build tree, and layouts that ship the pair together), the
+// library directory a bin/ + lib/ install() layout produces, then the
+// standard system library paths. Returns an empty string when nothing
+// matches.
+QString locateShim ();
+
 // Full integration pass (absorbs the former inject-peony.sh):
 //   1. point accountsservice/gsettings at a generated marker wallpaper
 //      (the shim nullifies it at load time — the color is irrelevant)
@@ -31,6 +38,6 @@ Status detect ();
 //      crashes)
 //   4. verify: process alive, shim mapped
 // Returns false with details in |error| on failure.
-bool setup (QString* error);
+bool setup(QString* error);
 
 } // namespace Integration

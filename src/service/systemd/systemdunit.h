@@ -21,49 +21,49 @@ struct Error {
 class SystemdUnit : public QObject {
     Q_OBJECT
 public:
-    explicit SystemdUnit (QString unitName, QObject* parent = nullptr);
-    ~SystemdUnit () override;
+    explicit SystemdUnit(QString unitName, QObject* parent = nullptr);
+    ~SystemdUnit() override;
 
-    QString unitName () const;
+    QString unitName() const;
 
     // Transient unit: StartTransientUnit without touching the filesystem.
     // Disappears with the session; ideal for relaunched system components.
     // extraProperties: optional additional unit properties (key -> value;
     // values marshal to their natural D-Bus types).
-    bool startTransient (const QStringList& execArgs, const QMap<QString, QString>& environment,
-                         const QMap<QString, QVariant>& extraProperties, Error* error = nullptr);
+    bool startTransient(const QStringList& execArgs, const QMap<QString, QString>& environment,
+                        const QMap<QString, QVariant>& extraProperties, Error* error = nullptr);
 
-    bool start (Error* error = nullptr);
-    bool stop (Error* error = nullptr);
-    bool restart (Error* error = nullptr);
-    bool resetFailed (Error* error = nullptr);
+    bool start(Error* error = nullptr);
+    bool stop(Error* error = nullptr);
+    bool restart(Error* error = nullptr);
+    bool resetFailed(Error* error = nullptr);
 
     // ActiveState per systemd: active / inactive / failed / activating.
     // A unit that is merely installed (not loaded) reads as inactive.
-    QString activeState (Error* error = nullptr) const;
-    bool isActive () const;
+    QString activeState(Error* error = nullptr) const;
+    bool isActive() const;
 
 signals:
     // Emitted when the manager reports an ActiveState change for this unit.
-    void stateChanged (const QString& activeState);
+    void stateChanged(const QString& activeState);
 
 private slots:
-    void onPropertiesChanged (const QDBusMessage& message);
+    void onPropertiesChanged(const QDBusMessage& message);
 
 private:
-    void subscribe ();
-    static QString escapeUnitId (const QString& unitId);
+    void subscribe();
+    static QString escapeUnitId(const QString& unitId);
 
     QString m_unitName;
     bool m_subscribed = false;
 };
 
 // Reload the user manager so freshly written unit files are picked up.
-bool daemonReload (Error* error = nullptr);
+bool daemonReload(Error* error = nullptr);
 
 // True when the error is an acceptable outcome of an idempotent control
 // operation: success, a unit that does not exist, or systemd's "not loaded"
 // phrasing for the same situation.
-bool tolerated (const Error& error);
+bool tolerated(const Error& error);
 
 } // namespace SystemdLayer

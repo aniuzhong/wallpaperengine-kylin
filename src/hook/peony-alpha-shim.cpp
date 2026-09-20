@@ -53,25 +53,25 @@
 
 // ---- logging
 
-static void shim_log (const char* fmt, ...) {
-    const char* path = getenv ("PEONY_ALPHA_LOG");
+static void shim_log(const char* fmt, ...) {
+    const char* path = getenv("PEONY_ALPHA_LOG");
     if (!path || !*path)
         return;
-    if (FILE* f = fopen (path, "a")) {
+    if (FILE* f = fopen(path, "a")) {
         va_list ap;
-        va_start (ap, fmt);
-        vfprintf (f, fmt, ap);
-        va_end (ap);
-        fclose (f);
+        va_start(ap, fmt);
+        vfprintf(f, fmt, ap);
+        va_end(ap);
+        fclose(f);
     }
 }
 
-static bool shim_enabled () {
-    const char* p = getenv ("PEONY_ALPHA_WALLPAPER");
+static bool shim_enabled() {
+    const char* p = getenv("PEONY_ALPHA_WALLPAPER");
     return p && *p;
 }
 
-// ------------------------------------------- 1. QPixmap constructor hook
+// ---- 1. QPixmap constructor hook
 //
 // The peony binary references:
 //   _ZN7QPixmapC1ERK7QStringPKc6QFlagsIN2Qt19ImageConversionFlagEE
@@ -96,20 +96,20 @@ using pixmap_ctor3_t = void (*)(QPixmap*, const QString&, const char*, Qt::Image
 // trip.
 static constexpr const char* kAccountsBackgroundDir = "/var/lib/AccountsService/backgrounds/";
 
-static bool is_wallpaper_path (const QString& fileName) {
-    const char* list = getenv ("PEONY_ALPHA_WALLPAPER");
+static bool is_wallpaper_path(const QString& fileName) {
+    const char* list = getenv("PEONY_ALPHA_WALLPAPER");
     if (!list || !*list)
         return false;
-    if (fileName.isEmpty ())
+    if (fileName.isEmpty())
         return false;
-    if (fileName.startsWith (kAccountsBackgroundDir))
+    if (fileName.startsWith(kAccountsBackgroundDir))
         return true;
-    QString base = QFileInfo (fileName).fileName ();
+    QString base = QFileInfo(fileName).fileName();
     const char* start = list;
     for (const char* p = list;; p++) {
         if (*p == ':' || *p == '\0') {
             if (p > start) {
-                QString candidate = QString::fromLocal8Bit (start, static_cast<int> (p - start));
+                QString candidate = QString::fromLocal8Bit(start, static_cast<int>(p - start));
                 if (fileName == candidate || base == candidate)
                     return true;
             }
@@ -121,46 +121,46 @@ static bool is_wallpaper_path (const QString& fileName) {
     return false;
 }
 
-static void nullify_if_wallpaper (QPixmap* pm, const QString& fileName) {
-    if (!pm->isNull () && is_wallpaper_path (fileName)) {
+static void nullify_if_wallpaper(QPixmap* pm, const QString& fileName) {
+    if (!pm->isNull() && is_wallpaper_path(fileName)) {
         // same-size fully transparent replacement; fill(transparent) yields
         // valid premultiplied alpha=0 pixels
-        QPixmap transparent (pm->size ());
-        transparent.fill (Qt::transparent);
+        QPixmap transparent(pm->size());
+        transparent.fill(Qt::transparent);
         *pm = transparent;
-        shim_log ("[shim] nullified wallpaper pixmap: %s (%dx%d)\n", fileName.toUtf8 ().constData (),
-                  pm->size ().width (), pm->size ().height ());
+        shim_log("[shim] nullified wallpaper pixmap: %s (%dx%d)\n", fileName.toUtf8().constData(),
+                 pm->size().width(), pm->size().height());
     }
 }
 
 extern "C" __attribute__((visibility("default"))) void
-_ZN7QPixmapC1ERK7QStringPKc6QFlagsIN2Qt19ImageConversionFlagEE (QPixmap* pm, const QString& fileName,
-                                                                const char* format, Qt::ImageConversionFlags flags) {
+_ZN7QPixmapC1ERK7QStringPKc6QFlagsIN2Qt19ImageConversionFlagEE(QPixmap* pm, const QString& fileName,
+                                                               const char* format, Qt::ImageConversionFlags flags) {
     static pixmap_ctor3_t real = nullptr;
     if (!real)
-        real = reinterpret_cast<pixmap_ctor3_t> (
-            dlsym (RTLD_NEXT, "_ZN7QPixmapC1ERK7QStringPKc6QFlagsIN2Qt19ImageConversionFlagEE"));
-    real (pm, fileName, format, flags);
-    nullify_if_wallpaper (pm, fileName);
+        real = reinterpret_cast<pixmap_ctor3_t>(
+            dlsym(RTLD_NEXT, "_ZN7QPixmapC1ERK7QStringPKc6QFlagsIN2Qt19ImageConversionFlagEE"));
+    real(pm, fileName, format, flags);
+    nullify_if_wallpaper(pm, fileName);
 }
 
 extern "C" __attribute__((visibility("default"))) void
-_ZN7QPixmapC2ERK7QStringPKc6QFlagsIN2Qt19ImageConversionFlagEE (QPixmap* pm, const QString& fileName,
-                                                                const char* format, Qt::ImageConversionFlags flags) {
+_ZN7QPixmapC2ERK7QStringPKc6QFlagsIN2Qt19ImageConversionFlagEE(QPixmap* pm, const QString& fileName,
+                                                               const char* format, Qt::ImageConversionFlags flags) {
     static pixmap_ctor3_t real = nullptr;
     if (!real)
-        real = reinterpret_cast<pixmap_ctor3_t> (
-            dlsym (RTLD_NEXT, "_ZN7QPixmapC2ERK7QStringPKc6QFlagsIN2Qt19ImageConversionFlagEE"));
-    real (pm, fileName, format, flags);
-    nullify_if_wallpaper (pm, fileName);
+        real = reinterpret_cast<pixmap_ctor3_t>(
+            dlsym(RTLD_NEXT, "_ZN7QPixmapC2ERK7QStringPKc6QFlagsIN2Qt19ImageConversionFlagEE"));
+    real(pm, fileName, format, flags);
+    nullify_if_wallpaper(pm, fileName);
 }
 
-// ------------------------------------------- 2. property rewriting (xcb/Xlib)
+// ---- 2. property rewriting (xcb/Xlib)
 
 static xcb_atom_t a_wm_type = 0, a_type_desktop = 0, a_type_normal = 0;
 static xcb_atom_t a_wm_state = 0, a_state_below = 0;
 
-static void ensure_atoms (xcb_connection_t* c) {
+static void ensure_atoms(xcb_connection_t* c) {
     // C++11 thread-safe static initialization: the interning runs exactly
     // once even if several threads race into the property hooks
     static const bool atoms_ready = [c] {
@@ -173,16 +173,16 @@ static void ensure_atoms (xcb_connection_t* c) {
             { "_NET_WM_STATE_BELOW", &a_state_below },
         };
         for (auto& it : list) {
-            xcb_intern_atom_cookie_t ck = xcb_intern_atom (c, 0, strlen (it.name), it.name);
-            xcb_intern_atom_reply_t* r = xcb_intern_atom_reply (c, ck, nullptr);
+            xcb_intern_atom_cookie_t ck = xcb_intern_atom(c, 0, strlen(it.name), it.name);
+            xcb_intern_atom_reply_t* r = xcb_intern_atom_reply(c, ck, nullptr);
             if (r) {
                 *it.out = r->atom;
-                free (r);
+                free(r);
             }
         }
-        shim_log ("[shim] xcb atoms ready (type=%lu desktop=%lu normal=%lu state=%lu below=%lu)\n",
-                  (unsigned long) a_wm_type, (unsigned long) a_type_desktop, (unsigned long) a_type_normal,
-                  (unsigned long) a_wm_state, (unsigned long) a_state_below);
+        shim_log("[shim] xcb atoms ready (type=%lu desktop=%lu normal=%lu state=%lu below=%lu)\n",
+                 (unsigned long) a_wm_type, (unsigned long) a_type_desktop, (unsigned long) a_type_normal,
+                 (unsigned long) a_wm_state, (unsigned long) a_state_below);
         return true;
     } ();
     (void) atoms_ready;
@@ -193,18 +193,18 @@ using xcb_ccp_t = xcb_void_cookie_t (*) (xcb_connection_t*, uint8_t, xcb_window_
 static xcb_ccp_t real_xcb_ccp = nullptr;
 
 __attribute__((visibility("default"))) xcb_void_cookie_t
-xcb_change_property (xcb_connection_t* c, uint8_t mode, xcb_window_t window, xcb_atom_t property, xcb_atom_t type,
-                     uint8_t format, uint32_t data_len, const void* data) {
+xcb_change_property(xcb_connection_t* c, uint8_t mode, xcb_window_t window, xcb_atom_t property, xcb_atom_t type,
+                    uint8_t format, uint32_t data_len, const void* data) {
     if (!real_xcb_ccp)
-        real_xcb_ccp = reinterpret_cast<xcb_ccp_t> (dlsym (RTLD_NEXT, "xcb_change_property"));
+        real_xcb_ccp = reinterpret_cast<xcb_ccp_t>(dlsym(RTLD_NEXT, "xcb_change_property"));
 
-    if (shim_enabled () && type == XCB_ATOM_ATOM && format == 32 && data_len > 0 && data_len <= 32) {
-        ensure_atoms (c);
-        const auto* atoms = static_cast<const xcb_atom_t*> (data);
+    if (shim_enabled() && type == XCB_ATOM_ATOM && format == 32 && data_len > 0 && data_len <= 32) {
+        ensure_atoms(c);
+        const auto* atoms = static_cast<const xcb_atom_t*>(data);
 
         if (property == a_wm_type) {
             xcb_atom_t buf[32];
-            memcpy (buf, data, data_len * 4);
+            memcpy(buf, data, data_len * 4);
             bool changed = false;
             for (uint32_t i = 0; i < data_len; i++) {
                 if (buf[i] == a_type_desktop) {
@@ -213,22 +213,22 @@ xcb_change_property (xcb_connection_t* c, uint8_t mode, xcb_window_t window, xcb
                 }
             }
             if (changed) {
-                shim_log ("[shim] win 0x%x: WINDOW_TYPE DESKTOP -> NORMAL\n", window);
-                return real_xcb_ccp (c, mode, window, property, type, format, data_len, buf);
+                shim_log("[shim] win 0x%x: WINDOW_TYPE DESKTOP -> NORMAL\n", window);
+                return real_xcb_ccp(c, mode, window, property, type, format, data_len, buf);
             }
         } else if (property == a_wm_state) {
             bool has_below = false;
             for (uint32_t i = 0; i < data_len; i++) has_below |= (atoms[i] == a_state_below);
             if (!has_below && data_len < 32) {
                 xcb_atom_t buf[33];
-                memcpy (buf, data, data_len * 4);
+                memcpy(buf, data, data_len * 4);
                 buf[data_len++] = a_state_below;
-                shim_log ("[shim] win 0x%x: appended STATE BELOW (%u atoms)\n", window, data_len);
-                return real_xcb_ccp (c, mode, window, property, type, format, data_len, buf);
+                shim_log("[shim] win 0x%x: appended STATE BELOW (%u atoms)\n", window, data_len);
+                return real_xcb_ccp(c, mode, window, property, type, format, data_len, buf);
             }
         }
     }
-    return real_xcb_ccp (c, mode, window, property, type, format, data_len, data);
+    return real_xcb_ccp(c, mode, window, property, type, format, data_len, data);
 }
 
 // Xlib fallback (KWindowSystem and other paths may go through Xlib; note the
@@ -236,33 +236,33 @@ xcb_change_property (xcb_connection_t* c, uint8_t mode, xcb_window_t window, xcb
 using xlib_ccp_t = int (*) (Display*, Window, Atom, Atom, int, int, const unsigned char*, int);
 static xlib_ccp_t real_xlib_ccp = nullptr;
 
-static Atom xlib_atom (Display* d, const char* name) {
-    return XInternAtom (d, name, False);
+static Atom xlib_atom(Display* d, const char* name) {
+    return XInternAtom(d, name, False);
 }
 
 __attribute__((visibility("default"))) int
-XChangeProperty (Display* display, Window w, Atom property, Atom type, int format, int mode,
-                 const unsigned char* data, int nelements) {
+XChangeProperty(Display* display, Window w, Atom property, Atom type, int format, int mode,
+                const unsigned char* data, int nelements) {
     if (!real_xlib_ccp)
-        real_xlib_ccp = reinterpret_cast<xlib_ccp_t> (dlsym (RTLD_NEXT, "XChangeProperty"));
+        real_xlib_ccp = reinterpret_cast<xlib_ccp_t>(dlsym(RTLD_NEXT, "XChangeProperty"));
 
-    if (shim_enabled () && format == 32 && nelements > 0 && nelements <= 32) {
+    if (shim_enabled() && format == 32 && nelements > 0 && nelements <= 32) {
         static Atom x_wm_type = 0, x_type_desktop = 0, x_type_normal = 0, x_wm_state = 0, x_state_below = 0;
         // C++11 thread-safe static initialization (same rationale as the xcb
         // path): the first caller's display interns the atoms exactly once
         static const bool xlib_atoms_ready = [&] {
-            x_wm_type = xlib_atom (display, "_NET_WM_WINDOW_TYPE");
-            x_type_desktop = xlib_atom (display, "_NET_WM_WINDOW_TYPE_DESKTOP");
-            x_type_normal = xlib_atom (display, "_NET_WM_WINDOW_TYPE_NORMAL");
-            x_wm_state = xlib_atom (display, "_NET_WM_STATE");
-            x_state_below = xlib_atom (display, "_NET_WM_STATE_BELOW");
-            shim_log ("[shim] xlib atoms ready\n");
+            x_wm_type = xlib_atom(display, "_NET_WM_WINDOW_TYPE");
+            x_type_desktop = xlib_atom(display, "_NET_WM_WINDOW_TYPE_DESKTOP");
+            x_type_normal = xlib_atom(display, "_NET_WM_WINDOW_TYPE_NORMAL");
+            x_wm_state = xlib_atom(display, "_NET_WM_STATE");
+            x_state_below = xlib_atom(display, "_NET_WM_STATE_BELOW");
+            shim_log("[shim] xlib atoms ready\n");
             return true;
         } ();
         (void) xlib_atoms_ready;
 
         if (type == XA_ATOM && property == x_wm_type) {
-            const auto* in = reinterpret_cast<const unsigned long*> (data);
+            const auto* in = reinterpret_cast<const unsigned long*>(data);
             unsigned long buf[32];
             bool changed = false;
             for (int i = 0; i < nelements; i++) {
@@ -273,21 +273,21 @@ XChangeProperty (Display* display, Window w, Atom property, Atom type, int forma
                 }
             }
             if (changed) {
-                shim_log ("[shim] xlib win 0x%lx: DESKTOP -> NORMAL\n", (unsigned long) w);
-                return real_xlib_ccp (display, w, property, type, format, mode, (unsigned char*) buf, nelements);
+                shim_log("[shim] xlib win 0x%lx: DESKTOP -> NORMAL\n", (unsigned long) w);
+                return real_xlib_ccp(display, w, property, type, format, mode, (unsigned char*) buf, nelements);
             }
         } else if (type == XA_ATOM && property == x_wm_state) {
-            const auto* in = reinterpret_cast<const unsigned long*> (data);
+            const auto* in = reinterpret_cast<const unsigned long*>(data);
             bool has_below = false;
             for (int i = 0; i < nelements; i++) has_below |= (in[i] == (unsigned long) x_state_below);
             if (!has_below) {
                 unsigned long buf[33];
                 for (int i = 0; i < nelements; i++) buf[i] = in[i];
                 buf[nelements++] = (unsigned long) x_state_below;
-                shim_log ("[shim] xlib win 0x%lx: appended BELOW\n", (unsigned long) w);
-                return real_xlib_ccp (display, w, property, type, format, mode, (unsigned char*) buf, nelements);
+                shim_log("[shim] xlib win 0x%lx: appended BELOW\n", (unsigned long) w);
+                return real_xlib_ccp(display, w, property, type, format, mode, (unsigned char*) buf, nelements);
             }
         }
     }
-    return real_xlib_ccp (display, w, property, type, format, mode, data, nelements);
+    return real_xlib_ccp(display, w, property, type, format, mode, data, nelements);
 }

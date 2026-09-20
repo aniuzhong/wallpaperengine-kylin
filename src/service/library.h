@@ -10,11 +10,11 @@ constexpr int kPreviewW = 360;
 constexpr int kPreviewH = kPreviewW * 9 / 16;
 
 struct WallpaperEntry {
-    QString id;     // workshop directory name, used as --bg value
-    QString title;  // project.json title
-    QString type;   // project.json type (scene/video/web)
-    QString size;   // humanized on-disk size of the wallpaper directory
-    QImage preview; // preview decoded at display resolution (16:9); null when absent
+    QString id;      // workshop directory name, used as --bg value
+    QString title;   // project.json title
+    QString type;    // project.json type (scene/video/web)
+    QString size;    // humanized on-disk size of the wallpaper directory
+    QImage  preview; // preview decoded at display resolution (16:9); null when absent
 
     // animated previews (multi-frame gif etc.): raw preview bytes for the
     // detail panel's player; empty for static previews
@@ -25,4 +25,4 @@ struct WallpaperEntry {
 // Scan a Wallpaper Engine workshop content directory. Directories without a
 // project.json are skipped; entries are sorted by title. Previews are
 // decoded here — the ui consumes images, never paths or directory layout.
-QList<WallpaperEntry> scanLibrary (const QString& workshopDir);
+QList<WallpaperEntry> scanLibrary(const QString& workshopDir);

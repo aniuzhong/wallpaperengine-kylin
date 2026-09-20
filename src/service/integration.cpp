@@ -16,39 +16,41 @@
 namespace {
 
 QString markerPath () {
-    return QStandardPaths::writableLocation (QStandardPaths::GenericDataLocation) +
+    return QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) +
            "/lwe-dynamic-wallpaper/lwe-alpha-wallpaper.png";
 }
 
-QString dataDir () {
-    return QStandardPaths::writableLocation (QStandardPaths::GenericDataLocation) + "/lwe-dynamic-wallpaper";
+QString dataDir() {
+    return QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/lwe-dynamic-wallpaper";
 }
 
-qint64 findPeonyPid () {
-    QDir proc ("/proc");
-    const QStringList ids = proc.entryList (QDir::Dirs | QDir::NoDotAndDotDot);
+qint64 findPeonyPid() {
+    QDir proc("/proc");
+    const QStringList ids = proc.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
     for (const QString& id : ids) {
         bool ok = false;
-        const qint64 pid = id.toLongLong (&ok);
+        const qint64 pid = id.toLongLong(&ok);
         if (!ok || pid <= 0)
             continue;
-        QFile cmd (QString ("/proc/%1/cmdline").arg (pid));
-        if (!cmd.open (QIODevice::ReadOnly))
+        QFile cmd(QString("/proc/%1/cmdline").arg(pid));
+        if (!cmd.open(QIODevice::ReadOnly))
             continue;
-        if (QString::fromUtf8 (cmd.readAll ()).contains ("peony-qt-desktop"))
+        if (QString::fromUtf8(cmd.readAll()).contains("peony-qt-desktop"))
             return pid;
     }
     return 0;
 }
 
-bool shimMapped (qint64 pid) {
-    QFile maps (QString ("/proc/%1/maps").arg (pid));
-    if (!maps.open (QIODevice::ReadOnly))
+bool shimMapped(qint64 pid) {
+    QFile maps(QString("/proc/%1/maps").arg(pid));
+    if (!maps.open(QIODevice::ReadOnly))
         return false;
-    return maps.readAll ().contains ("peony-alpha-shim");
+    return maps.readAll().contains("peony-alpha-shim");
 }
 
-bool peonyGone () { return findPeonyPid () == 0; }
+bool peonyGone() {
+    return findPeonyPid() == 0;
+}
 
 bool waitForPeonyExit (int timeoutMs) {
     while (timeoutMs > 0) {
@@ -113,6 +115,24 @@ Status detect () {
     return status;
 }
 
+QString locateShim () {
+    const QString name = QStringLiteral ("libpeony-alpha-shim.so");
+    QStringList candidates;
+    if (QCoreApplication::instance () != nullptr) {
+        const QString appDir = QCoreApplication::applicationDirPath ();
+        candidates << appDir + "/" + name          // build tree, sibling of the frontend
+                   << appDir + "/../lib/" + name   // install() layout: bin/ + lib/
+                   << appDir + "/../lib64/" + name;
+    }
+    candidates << "/usr/lib/" + name
+               << "/usr/local/lib/" + name
+               << "/usr/lib/x86_64-linux-gnu/" + name;
+    for (const QString& candidate : candidates)
+        if (QFile::exists (candidate))
+            return candidate;
+    return QString ();
+}
+
 bool setup (QString* error) {
     // ---- 1. marker wallpaper; accountsservice and gsettings point at it.
     // The shim nullifies the pixmap at load time, so the color is irrelevant
@@ -165,7 +185,14 @@ bool setup (QString* error) {
     // launch through the typed systemd layer: transient unit with
     // Restart=on-failure — if peony dies, systemd restarts it WITH the
     // injection environment (structurally guaranteed self-healing)
-    const QString shimPath = QCoreApplication::applicationDirPath () + "/libpeony-alpha-shim.so";
+    const QString shimPath = locateShim ();
+    if (shimPath.isEmpty ()) {
+        if (error)
+            *error = QString ("libpeony-alpha-shim.so not found next to the frontend or in the standard "
+                              "library paths (looked in %1)")
+                         .arg (QCoreApplication::applicationDirPath ());
+        return false;
+    }
     const QString logPath = dataDir () + "/peony-shim.log";
     SystemdLayer::SystemdUnit peonyUnit ("linux-wallpaperengine-peony");
     SystemdLayer::Error unitError;
@@ -174,22 +201,25 @@ bool setup (QString* error) {
     peonyEnv.insert ("PEONY_ALPHA_WALLPAPER", wallpaperList);
     peonyEnv.insert ("PEONY_ALPHA_LOG", logPath);
     if (!peonyUnit.startTransient ({ "/usr/bin/peony-qt-desktop", "-w", "-d" }, peonyEnv, {}, &unitError)) {
-        if (error) *error = "transient launch failed: " + unitError.message;
+        if (error)
+            *error = "transient launch failed: " + unitError.message;
         return false;
     }
 
     // ---- 4. verify the shim actually mapped into the new instance
     for (int waited = 0; waited < 10000; waited += 300) {
         QThread::msleep (300);
-        const qint64 pid = findPeonyPid ();
+        const qint64 pid = findPeonyPid();
         if (pid == 0)
             continue;
-        if (shimMapped (pid)) {
-            if (error) error->clear ();
+        if (shimMapped(pid)) {
+            if (error)
+                error->clear();
             return true;
         }
     }
-    if (error) *error = "peony relaunched but the shim did not map (list: " + wallpaperList + "; log: " + logPath + ")";
+    if (error)
+        *error = "peony relaunched but the shim did not map (list: " + wallpaperList + "; log: " + logPath + ")";
     return false;
 }
 

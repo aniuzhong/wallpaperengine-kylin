@@ -1,21 +1,21 @@
 #include "argvbuilder.h"
 
-QStringList buildArgv (const Config& config) {
+QStringList buildArgv(const Config& config) {
     QStringList argv;
     argv << config.enginePath;
 
-    if (!config.assetsDir.isEmpty ())
+    if (!config.assetsDir.isEmpty())
         argv << "--assets-dir" << config.assetsDir;
 
-    for (auto it = config.screens.begin (); it != config.screens.end (); ++it) {
-        argv << "--screen-root" << it.key () << "--bg" << it.value ();
-        if (!config.scaling.isEmpty ())
+    for (auto it = config.screens.begin(); it != config.screens.end(); ++it) {
+        argv << "--screen-root" << it.key() << "--bg" << it.value();
+        if (!config.scaling.isEmpty())
             argv << "--scaling" << config.scaling;
-        if (!config.clamp.isEmpty ())
+        if (!config.clamp.isEmpty())
             argv << "--clamp" << config.clamp;
     }
 
-    argv << "--fps" << QString::number (config.fps);
+    argv << "--fps" << QString::number(config.fps);
     if (!config.fullscreenPause)
         argv << "--no-fullscreen-pause";
     if (!config.automute)
@@ -26,7 +26,7 @@ QStringList buildArgv (const Config& config) {
     if (config.silent)
         argv << "--silent";
     else
-        argv << "--volume" << QString::number (config.volume);
+        argv << "--volume" << QString::number(config.volume);
 
     if (config.disableParticles)
         argv << "--disable-particles";
@@ -39,25 +39,25 @@ QStringList buildArgv (const Config& config) {
     // launched: shared property names (schemecolor, ...) must not leak from
     // one wallpaper into another
     QStringList activeIds;
-    for (auto screenIt = config.screens.begin (); screenIt != config.screens.end (); ++screenIt)
-        if (!activeIds.contains (screenIt.value ()))
-            activeIds << screenIt.value ();
+    for (auto screenIt = config.screens.begin(); screenIt != config.screens.end(); ++screenIt)
+        if (!activeIds.contains(screenIt.value()))
+            activeIds << screenIt.value();
 
-    for (auto wallIt = config.properties.begin (); wallIt != config.properties.end (); ++wallIt) {
-        if (!activeIds.contains (wallIt.key ()))
+    for (auto wallIt = config.properties.begin(); wallIt != config.properties.end(); ++wallIt) {
+        if (!activeIds.contains(wallIt.key()))
             continue;
-        const QVariantMap props = wallIt.value ().toMap ();
-        for (auto propIt = props.begin (); propIt != props.end (); ++propIt)
-            argv << "--set-property" << propIt.key () + "=" + propIt.value ().toString ();
+        const QVariantMap props = wallIt.value().toMap();
+        for (auto propIt = props.begin(); propIt != props.end(); ++propIt)
+            argv << "--set-property" << propIt.key() + "=" + propIt.value().toString();
     }
 
     return argv;
 }
 
-QString buildCommandLine (const Config& config) {
+QString buildCommandLine(const Config& config) {
     QStringList quoted;
-    for (const QString& arg : buildArgv (config)) {
-        quoted << (arg.contains (' ') ? '"' + arg + '"' : arg);
+    for (const QString& arg : buildArgv(config)) {
+        quoted << (arg.contains(' ') ? '"' + arg + '"' : arg);
     }
-    return quoted.join (' ');
+    return quoted.join(' ');
 }
