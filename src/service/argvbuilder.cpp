@@ -53,11 +53,3 @@ QStringList buildArgv(const Config& config) {
 
     return argv;
 }
-
-QString buildCommandLine(const Config& config) {
-    QStringList quoted;
-    for (const QString& arg : buildArgv(config)) {
-        quoted << (arg.contains(' ') ? '"' + arg + '"' : arg);
-    }
-    return quoted.join(' ');
-}

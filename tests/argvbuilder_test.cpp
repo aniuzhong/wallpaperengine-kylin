@@ -125,13 +125,6 @@ private slots:
         QVERIFY (argv.contains ("--noautomute"));
         QVERIFY (argv.contains ("--no-audio-processing"));
     }
-
-    void commandLineQuotesArgumentsWithSpaces () {
-        Config c = defaultConfig ();
-        c.assetsDir = "/opt/some assets";
-        const QString line = buildCommandLine (c);
-        QVERIFY (line.contains ("\"/opt/some assets\""));
-    }
 };
 
 QTEST_MAIN (ArgvBuilderTest)
