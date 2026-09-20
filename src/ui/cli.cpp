@@ -2,20 +2,28 @@
 
 #include "argvbuilder.h"
 #include "config.h"
+#include "engineunit.h"
 #include "integration.h"
 #include "library.h"
-#include "engineunit.h"
 
-#include <QJsonArray>
-#include <QFile>
-#include <QDir>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QProcess>
-#include <QRandomGenerator>
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
+#include <cerrno>
+#include <csignal>
 #include <cstdio>
+#include <ctime>
 #include <map>
+#include <random>
+#include <string>
+#include <vector>
+
+#include <filesystem>
+#include <poll.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+namespace fs = std::filesystem;
 
 namespace {
 
@@ -61,18 +69,18 @@ int cmdStatus (bool json) {
         std::printf ("engine: %s\n", config.enginePath.c_str ());
         return EXIT_OK;
     }
-    QJsonObject status;
-    status.insert ("unit", QString::fromStdString (EngineUnit::unitName ()));
-    status.insert ("state", QString::fromStdString (state));
-    QJsonObject screensJson;
+    nlohmann::json screensJson = nlohmann::json::object ();
     for (const auto& [screen, wallpaper] : screens)
-        screensJson.insert (QString::fromStdString (screen), QString::fromStdString (wallpaper));
-    status.insert ("screens", screensJson);
-    status.insert ("enginePath", QString::fromStdString (config.enginePath));
+        screensJson[screen] = wallpaper;
+    nlohmann::json status;
+    status["unit"] = EngineUnit::unitName ();
+    status["state"] = state;
+    status["screens"] = std::move (screensJson);
+    status["enginePath"] = config.enginePath;
 
-    QJsonObject root;
-    root.insert ("status", status);
-    std::printf ("%s\n", QJsonDocument (root).toJson (QJsonDocument::Compact).constData ());
+    nlohmann::json root;
+    root["status"] = std::move (status);
+    std::printf ("%s\n", root.dump ().c_str ());
     return EXIT_OK;
 }
 
@@ -80,15 +88,16 @@ int cmdList (bool json) {
     const Config config = Config::load ();
     const std::vector<WallpaperEntry> entries = scanLibrary (config.workshopDir);
     if (json) {
-        QJsonArray arr;
+        nlohmann::json arr = nlohmann::json::array ();
         for (const WallpaperEntry& e : entries) {
-            QJsonObject o;
-            o.insert ("id", QString::fromStdString (e.id));
-            o.insert ("title", QString::fromStdString (e.title));
-            o.insert ("type", QString::fromStdString (e.type));
-            arr.append (o);
+            nlohmann::json o;
+            o["id"] = e.id;
+            o["title"] = e.title;
+            o["type"] = e.type;
+            arr.push_back (std::move (o));
         }
-        std::printf ("%s\n", QJsonDocument (QJsonArray { arr }).toJson (QJsonDocument::Compact).constData ());
+        // consumers parse the wrapped shape; do not unwrap
+        std::printf ("%s\n", nlohmann::json::array ({ std::move (arr) }).dump ().c_str ());
         return EXIT_OK;
     }
     for (const WallpaperEntry& e : entries)
@@ -96,16 +105,15 @@ int cmdList (bool json) {
     return EXIT_OK;
 }
 
-int cmdSwitch (const QStringList& args) {
-    QString id;
-    QString screen;
+int cmdSwitch (const std::vector<std::string>& args) {
+    std::string id;
     bool random = false;
-    for (const QString& a : args) {
+    for (const std::string& a : args) {
         if (a == "--random")
             random = true;
-        else if (a == "--screen" || a.startsWith ("--screen="))
+        else if (a == "--screen" || a.rfind ("--screen=", 0) == 0)
             continue; // multi-screen selection lands with the UI iteration
-        else if (!a.startsWith ("-"))
+        else if (!a.empty () && a[0] != '-')
             id = a;
     }
 
@@ -115,50 +123,134 @@ int cmdSwitch (const QStringList& args) {
         std::printf ("switch: no wallpapers found in %s\n", config.workshopDir.c_str ());
         return EXIT_FAIL;
     }
-    if (random)
-        id = QString::fromStdString (
-            library.at (QRandomGenerator::global ()->bounded (static_cast<int> (library.size ()))).id);
+    if (random) {
+        std::mt19937 generator (std::random_device {} ());
+        std::uniform_int_distribution<size_t> pick (0, library.size () - 1);
+        id = library[pick (generator)].id;
+    }
 
-    const std::string wanted = id.toStdString ();
     bool known = false;
     for (const WallpaperEntry& e : library)
-        known |= (e.id == wanted);
+        known |= (e.id == id);
     if (!known) {
-        std::printf ("switch: unknown wallpaper id %s\n", id.toUtf8 ().constData ());
+        std::printf ("switch: unknown wallpaper id %s\n", id.c_str ());
         return EXIT_FAIL;
     }
 
     Config updated = config;
-    EngineUnit::assignScreen (updated, wanted);
+    EngineUnit::assignScreen (updated, id);
 
     if (!EngineUnit::applyConfig (updated)) {
         std::printf ("switch: failed to (re)start the engine unit\n");
         return EXIT_FAIL;
     }
-    std::printf ("switched: %s\n", id.toUtf8 ().constData ());
+    std::printf ("switched: %s\n", id.c_str ());
     return EXIT_OK;
 }
 
-int cmdProperties (const QString& id) {
+// Run the engine as a child with stdout/stderr streamed to ours, bounded by
+// |timeoutMs| (SIGKILL past the deadline). Returns the child exit code, or
+// -1 when the child could not be spawned or was killed (|=timedOut| tells
+// which); 127 means the engine path itself was not executable.
+int runEngineCaptured (const std::string& enginePath, const std::vector<std::string>& args,
+                       long timeoutMs, bool* timedOut) {
+    *timedOut = false;
+    int outPipe[2] = {-1, -1};
+    int errPipe[2] = {-1, -1};
+    if (pipe (outPipe) != 0)
+        return -1;
+    if (pipe (errPipe) != 0) {
+        close (outPipe[0]);
+        close (outPipe[1]);
+        return -1;
+    }
+
+    const pid_t pid = fork ();
+    if (pid < 0) {
+        for (int fd : {outPipe[0], outPipe[1], errPipe[0], errPipe[1]})
+            close (fd);
+        return -1;
+    }
+    if (pid == 0) {
+        dup2 (outPipe[1], STDOUT_FILENO);
+        dup2 (errPipe[1], STDERR_FILENO);
+        for (int fd : {outPipe[0], outPipe[1], errPipe[0], errPipe[1]})
+            close (fd);
+        std::vector<char*> childArgs;
+        childArgs.push_back (const_cast<char*> (enginePath.c_str ()));
+        for (const std::string& arg : args)
+            childArgs.push_back (const_cast<char*> (arg.c_str ()));
+        childArgs.push_back (nullptr);
+        execvp (enginePath.c_str (), childArgs.data ());
+        _exit (127);
+    }
+
+    close (outPipe[1]);
+    close (errPipe[1]);
+    const long long deadline = [] {
+        timespec now;
+        clock_gettime (CLOCK_MONOTONIC, &now);
+        return static_cast<long long> (now.tv_sec) * 1000 + now.tv_nsec / 1000000;
+    } () + timeoutMs;
+
+    int readers[2] = {outPipe[0], errPipe[0]};
+    int openReaders = 2;
+    char buffer[4096];
+    while (openReaders > 0) {
+        timespec now;
+        clock_gettime (CLOCK_MONOTONIC, &now);
+        const long long remaining = deadline - (static_cast<long long> (now.tv_sec) * 1000 + now.tv_nsec / 1000000);
+        if (remaining <= 0) {
+            *timedOut = true;
+            break;
+        }
+        pollfd fds[2] = {{readers[0], POLLIN, 0}, {readers[1], POLLIN, 0}};
+        const int ready = poll (fds, 2, static_cast<int> (remaining));
+        if (ready < 0) {
+            if (errno == EINTR)
+                continue;
+            break;
+        }
+        for (int i = 0; i < 2; i++) {
+            if ((fds[i].revents & (POLLIN | POLLHUP)) == 0)
+                continue;
+            const ssize_t n = read (readers[i], buffer, sizeof (buffer));
+            if (n <= 0) {
+                close (readers[i]);
+                readers[i] = -1;
+                openReaders--;
+                continue;
+            }
+            std::fwrite (buffer, 1, static_cast<size_t> (n), i == 0 ? stdout : stderr);
+        }
+    }
+    for (int fd : readers)
+        if (fd != -1)
+            close (fd);
+
+    if (*timedOut)
+        kill (pid, SIGKILL);
+    int status = 0;
+    waitpid (pid, &status, 0);
+    if (*timedOut)
+        return -1;
+    return WIFEXITED (status) ? WEXITSTATUS (status) : -1;
+}
+
+int cmdProperties (const std::string& id) {
     const Config config = Config::load ();
-    QProcess engine;
-    engine.start (QString::fromStdString (config.enginePath),
-                  QStringList { "--list-properties", "--assets-dir", QString::fromStdString (config.assetsDir), id });
-    if (!engine.waitForStarted (5000) || !engine.waitForFinished (30000)) {
-        engine.kill ();
+    bool timedOut = false;
+    const int exitCode = runEngineCaptured (
+        config.enginePath, {"--list-properties", "--assets-dir", config.assetsDir, id}, 30000, &timedOut);
+    if (timedOut || exitCode == -1 || exitCode == 127) {
         std::printf ("properties: engine did not finish in time\n");
         return EXIT_FAIL;
     }
-    std::fputs (QString::fromUtf8 (engine.readAllStandardOutput ()).toUtf8 ().constData (), stdout);
-    std::fputs (QString::fromUtf8 (engine.readAllStandardError ()).toUtf8 ().constData (), stderr);
-    return engine.exitCode ();
+    return exitCode;
 }
 
 int cmdSetupIntegration () {
     std::string error;
-    // no wait cursor here: the headless control plane runs without a GUI
-    // application (and a CLI has no cursor to override anyway); the GUI
-    // setup path sets its own
     const bool ok = Integration::setup (&error);
     if (ok) {
         std::printf ("integration configured: peony injected, desktop transparent\n");
@@ -170,15 +262,14 @@ int cmdSetupIntegration () {
 
 int cmdDoctor () {
     const Config config = Config::load ();
-    const QString configPath = QString::fromStdString (Config::configPath ());
-    std::printf ("config: %s (%s)\n", configPath.toUtf8 ().constData (),
-                 QFile::exists (configPath) ? "present" : "missing");
-    const QString enginePath = QString::fromStdString (config.enginePath);
-    std::printf ("engine binary: %s (%s)\n", enginePath.toUtf8 ().constData (),
-                 QFile::exists (enginePath) ? "present" : "MISSING");
-    const QString assetsDir = QString::fromStdString (config.assetsDir);
-    std::printf ("assets dir: %s (%s)\n", assetsDir.toUtf8 ().constData (),
-                 QDir (assetsDir).exists () ? "present" : "MISSING");
+    std::error_code ec;
+    const std::string configPath = Config::configPath ();
+    std::printf ("config: %s (%s)\n", configPath.c_str (),
+                 fs::exists (configPath, ec) ? "present" : "missing");
+    std::printf ("engine binary: %s (%s)\n", config.enginePath.c_str (),
+                 fs::exists (config.enginePath, ec) ? "present" : "MISSING");
+    std::printf ("assets dir: %s (%s)\n", config.assetsDir.c_str (),
+                 fs::is_directory (config.assetsDir, ec) ? "present" : "MISSING");
     std::printf ("workshop dir: %s (%d wallpapers)\n", config.workshopDir.c_str (),
                  static_cast<int> (scanLibrary (config.workshopDir).size ()));
 
@@ -195,17 +286,27 @@ int cmdDoctor () {
     return EXIT_OK;
 }
 
+int cmdSelftest () {
+    // load the config (creating defaults on first run) and report
+    const Config config = Config::load ();
+    std::printf ("config path: %s\n", Config::configPath ().c_str ());
+    std::printf ("engine: %s\n", config.enginePath.c_str ());
+    std::printf ("screens: %d, fps: %d, silent: %s\n", static_cast<int> (config.screens.size ()), config.fps,
+                 config.silent ? "true" : "false");
+    return config.save () ? EXIT_OK : EXIT_FAIL;
+}
+
 } // namespace
 
-int runCli (const QStringList& args) {
-    if (args.isEmpty () || args.first () == "help" || args.first () == "--help") {
+int runCli (const std::vector<std::string>& args) {
+    if (args.empty () || args.front () == "help" || args.front () == "--help") {
         printUsage ();
-        return args.isEmpty () ? EXIT_USAGE : EXIT_OK;
+        return args.empty () ? EXIT_USAGE : EXIT_OK;
     }
 
-    const QString command = args.first ();
-    const QStringList rest = args.mid (1);
-    const bool json = rest.contains ("--json");
+    const std::string command = args.front ();
+    const std::vector<std::string> rest (args.begin () + 1, args.end ());
+    const bool json = std::find (rest.begin (), rest.end (), "--json") != rest.end ();
 
     if (command == "start" || command == "resume") {
         if (!EngineUnit::writeUnitFile (Config::load ()) || !EngineUnit::daemonReload ())
@@ -223,13 +324,15 @@ int runCli (const QStringList& args) {
     if (command == "switch")
         return cmdSwitch (rest);
     if (command == "properties")
-        return rest.isEmpty () ? EXIT_USAGE : cmdProperties (rest.first ());
+        return rest.empty () ? EXIT_USAGE : cmdProperties (rest.front ());
     if (command == "setup-integration")
         return cmdSetupIntegration ();
     if (command == "doctor")
         return cmdDoctor ();
+    if (command == "selftest" || command == "--selftest")
+        return cmdSelftest ();
 
-    std::printf ("unknown command: %s\n\n", command.toUtf8 ().constData ());
+    std::printf ("unknown command: %s\n\n", command.c_str ());
     printUsage ();
     return EXIT_USAGE;
 }

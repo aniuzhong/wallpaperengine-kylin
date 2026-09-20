@@ -1,10 +1,12 @@
-// Qt-free smoke test of the service archive: links wallpaper_service with
-// NO Qt at all (no QtTest, no QtCore) and exercises the pure entry points.
-// Guards the layer's Qt-free boundary — a single Qt include creeping into
-// src/service breaks this link.
+// Qt-free smoke test of the service archive plus the CLI frontend: links
+// wallpaper_service and the CLI with NO Qt at all (no QtTest, no QtCore)
+// and exercises the pure entry points. Guards the layer's Qt-free boundary
+// — a single Qt include creeping into src/service or src/ui breaks this
+// link.
 #include "../src/service/argvbuilder.h"
 #include "../src/service/library.h"
 #include "../src/service/systemd/unitbuilder.h"
+#include "../src/ui/cli.h"
 
 #include <cstdio>
 #include <string>
@@ -34,6 +36,12 @@ int main () {
     // library scan on a nonexistent root degrades to an empty result
     if (!scanLibrary ("/lwe-smoke-does-not-exist").empty ()) {
         std::printf ("smoke: scanLibrary failed\n");
+        return 1;
+    }
+
+    // CLI usage path: exercises the command table with no side effects
+    if (runCli ({}) != 2) {
+        std::printf ("smoke: runCli usage exit failed\n");
         return 1;
     }
 

@@ -1,8 +1,9 @@
 #pragma once
 
-#include <QStringList>
+#include <string>
+#include <vector>
 
-// Headless control surface. `wallpaper-engine <command> [options]` — the
-// UI window is only entered when the binary is started without arguments.
+// Headless control surface. `wallpaper-engine <command> [options]` never
+// opens a window and works with no display at all (SSH, CI, pre-login).
 // Returns the process exit code: 0 ok, 1 failure, 2 usage error.
-int runCli (const QStringList& args);
+int runCli (const std::vector<std::string>& args);

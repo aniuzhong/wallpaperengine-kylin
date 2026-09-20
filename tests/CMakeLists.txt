@@ -22,13 +22,11 @@ add_executable (library_test library_test.cpp ../src/service/library.cpp)
 target_link_libraries (library_test PRIVATE Qt5::Core Qt5::Test nlohmann_json::nlohmann_json)
 add_test (NAME library_test COMMAND library_test)
 
-# smoke: the service archive must link and run WITHOUT Qt at all — guards
-# the layer's Qt-free boundary (any Qt include in src/service fails this
-# target's link, since no Qt library is on its link line)
-add_executable (service_smoke_test service_smoke_test.cpp
-    ../src/service/argvbuilder.cpp ../src/service/config.cpp
-    ../src/service/library.cpp ../src/service/systemd/unitbuilder.cpp)
-target_link_libraries (service_smoke_test PRIVATE nlohmann_json::nlohmann_json)
+# smoke: the CLI frontend and the service archive must link and run WITHOUT
+# Qt at all — guards the Qt-free boundary (any Qt include in src/service or
+# src/ui fails this target's link, since no Qt library is on its link line)
+add_executable (service_smoke_test service_smoke_test.cpp ../src/ui/cli.cpp)
+target_link_libraries (service_smoke_test PRIVATE wallpaper_service)
 add_test (NAME service_smoke_test COMMAND service_smoke_test)
 
 # T3: headless CLI end-to-end against the real user manager (isolated by

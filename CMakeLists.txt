@@ -5,7 +5,10 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets)
+# Qt is a build-time-only concern now: the tests use the QtTest framework
+# and the shim compiles against Qt headers (its symbols resolve from the
+# host peony process at load time). The shipped binaries link no Qt at all.
+find_package(Qt5 REQUIRED COMPONENTS Core Gui)
 find_package(X11 REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(XCB REQUIRED xcb)
@@ -43,18 +46,14 @@ target_link_libraries(wallpaper_service PUBLIC nlohmann_json::nlohmann_json ${XC
 target_compile_options(wallpaper_service PRIVATE -Wall -Wextra)
 
 # ---- wallpaper-engine
-# Frontend binary: headless CLI plus the Wallpaper UI window (the only GUI;
-# the legacy minimal UI was removed at the start of M1).
+# Frontend binary: the headless CLI is the entire control surface (the Qt
+# wallpaper browser was removed). Qt-free like the service layer — it links
+# this and nothing else, so a Qt include anywhere in src/ui breaks the link.
 add_executable(wallpaper-engine
     src/ui/main.cpp
     src/ui/cli.cpp
-    src/ui/wallpaperui/wallpaperui.cpp
-    src/ui/wallpaperui/detailpanel.cpp
-    src/ui/wallpaperui/griddelegate.cpp
-    src/ui/wallpaperui/placeholder.cpp
-    src/ui/wallpaperui/preview.cpp
 )
-target_link_libraries(wallpaper-engine PRIVATE Qt5::Core Qt5::Widgets wallpaper_service)
+target_link_libraries(wallpaper-engine PRIVATE wallpaper_service)
 target_include_directories(wallpaper-engine PRIVATE src/ui)
 target_compile_options(wallpaper-engine PRIVATE -Wall -Wextra)
 

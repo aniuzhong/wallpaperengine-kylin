@@ -31,7 +31,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # CMake in the Kylin repos is only 3.16.3 while the glslang submodule
 # requires >= 3.22.1, so use the official Kitware binary instead of apt.
-# qtbase5-dev builds the peony shim (and later the UI).
+# qtbase5-dev builds the peony shim (Qt headers only — the shim resolves Qt
+# symbols from the host peony process) and the QtTest-based tests.
 ARG CMAKE_VERSION=4.4.3
 ARG CMAKE_URL=https://cmake.org/files/v4.4
 
