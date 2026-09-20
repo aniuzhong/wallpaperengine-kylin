@@ -45,6 +45,7 @@ RUN apt-get update \
         libxxf86vm-dev libglm-dev libglfw3-dev libmpv-dev \
         libpulse-dev libfftw3-dev libfreetype-dev libdbus-1-dev zlib1g-dev \
         libpng-dev libgmp-dev qtbase5-dev \
+        libsystemd-dev \
  && rm -rf /var/lib/apt/lists/*
 
 RUN wget -q -O /tmp/cmake.tar.gz \

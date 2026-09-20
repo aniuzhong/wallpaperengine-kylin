@@ -1,7 +1,9 @@
 #pragma once
 
-#include <QDBusMessage>
+#include <QMap>
 #include <QString>
+#include <QStringList>
+#include <QVariant>
 
 namespace SystemdLayer {
 

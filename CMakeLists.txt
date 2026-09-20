@@ -5,12 +5,13 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets DBus)
+find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets)
 find_package(X11 REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(XCB REQUIRED xcb)
 pkg_check_modules(XCB_RANDR REQUIRED xcb-randr)
 pkg_check_modules(PNG REQUIRED libpng)
+pkg_check_modules(LIBSYSTEMD REQUIRED libsystemd)
 
 # ---- wallpaper_service
 # Control core (frontend-free): the generic systemd D-Bus client plus the
@@ -27,7 +28,7 @@ add_library(wallpaper_service STATIC
     src/service/engineunit.cpp
 )
 target_include_directories(wallpaper_service PUBLIC src/service src/service/systemd ${XCB_RANDR_INCLUDE_DIRS} ${PNG_INCLUDE_DIRS})
-target_link_libraries(wallpaper_service PUBLIC Qt5::Core Qt5::DBus ${XCB_LIBRARIES} ${XCB_RANDR_LIBRARIES} ${PNG_LIBRARIES})
+target_link_libraries(wallpaper_service PUBLIC Qt5::Core ${XCB_LIBRARIES} ${XCB_RANDR_LIBRARIES} ${PNG_LIBRARIES} ${LIBSYSTEMD_LIBRARIES})
 target_compile_options(wallpaper_service PRIVATE -Wall -Wextra)
 
 # ---- wallpaper-engine

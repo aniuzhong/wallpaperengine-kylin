@@ -1,6 +1,7 @@
 # systemd layer tests: pure logic always runs; integration tests need a
 # systemd user session bus and skip automatically when it is absent.
 find_package (Qt5 REQUIRED COMPONENTS Core DBus Test)
+pkg_check_modules (LIBSYSTEMD REQUIRED libsystemd)
 
 add_executable (unitbuilder_test unitbuilder_test.cpp ../src/service/systemd/unitbuilder.cpp)
 target_link_libraries (unitbuilder_test PRIVATE Qt5::Core Qt5::Test)
@@ -31,7 +32,7 @@ target_compile_definitions (cli_e2e_test PRIVATE
 add_test (NAME cli_e2e_test COMMAND cli_e2e_test)
 
 add_executable (systemdunit_test systemdunit_test.cpp ../src/service/systemd/systemdunit.cpp ../src/service/systemd/unitbuilder.cpp)
-target_link_libraries (systemdunit_test PRIVATE Qt5::Core Qt5::DBus Qt5::Test)
+target_link_libraries (systemdunit_test PRIVATE Qt5::Core Qt5::DBus Qt5::Test ${LIBSYSTEMD_LIBRARIES})
 add_test (NAME systemdunit_test COMMAND systemdunit_test)
 
 # ---- shim interposition coverage ------------------------------------------

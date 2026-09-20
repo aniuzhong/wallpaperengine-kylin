@@ -6,12 +6,13 @@
 #include <QDir>
 #include <QFile>
 #include <QProcess>
-#include <QRegularExpression>
 #include <QStandardPaths>
 #include <QThread>
 
 #include <png.h>
+#include <systemd/sd-bus.h>
 
+#include <cstdarg>
 #include <setjmp.h>
 #include <sys/stat.h>
 #include <csignal>
@@ -77,17 +78,49 @@ bool waitForPeonyExit(int timeoutMs) {
     return peonyGone();
 }
 
+// accountsservice on the system bus, addressed directly — the former
+// dbus-send subprocesses with their text parsing. Read calls keep the
+// former dbus-send patience (5s).
+
+// One system-bus method call; nullptr (caller unrefs) on any failure.
+sd_bus_message* callAccounts(sd_bus* bus, const char* path, const char* iface, const char* member,
+                             const char* types, ...) {
+    va_list ap;
+    va_start(ap, types);
+    sd_bus_message* m = nullptr;
+    int rc = sd_bus_message_new_method_call(bus, &m, "org.freedesktop.Accounts", path, iface, member);
+    if (rc >= 0)
+        rc = sd_bus_message_appendv(m, types, ap);
+    va_end(ap);
+
+    sd_bus_message* reply = nullptr;
+    if (rc >= 0)
+        rc = sd_bus_call(bus, m, 5 * 1000000ULL, nullptr, &reply);
+    sd_bus_message_unref(m);
+    if (rc < 0) {
+        sd_bus_message_unref(reply);
+        return nullptr;
+    }
+    return reply;
+}
+
+// FindUserById -> /org/freedesktop/Accounts/User<N>
 QString accountUserObjectPath() {
-    QProcess dbus;
-    const QStringList findArgs = { "dbus-send", "--system", "--print-reply", "--dest=org.freedesktop.Accounts",
-                                   "/org/freedesktop/Accounts", "org.freedesktop.Accounts.FindUserById",
-                                   QString::number(static_cast<long long>(getuid())) };
-    dbus.start("dbus-send", findArgs);
-    if (!dbus.waitForFinished(5000))
+    sd_bus* bus = nullptr;
+    if (sd_bus_open_system(&bus) < 0)
         return {};
-    const QString reply = QString::fromUtf8(dbus.readAllStandardOutput());
-    const QRegularExpression re("(/org/freedesktop/Accounts/User\\d+)");
-    return re.match(reply).hasMatch() ? re.match(reply).captured(1) : QString();
+
+    QString path;
+    sd_bus_message* reply = callAccounts(bus, "/org/freedesktop/Accounts", "org.freedesktop.Accounts",
+                                         "FindUserById", "x", static_cast<qint64>(getuid()));
+    if (reply != nullptr) {
+        const char* object = nullptr;
+        if (sd_bus_message_read(reply, "o", &object) >= 0 && object != nullptr)
+            path = QString::fromUtf8(object);
+        sd_bus_message_unref(reply);
+    }
+    sd_bus_flush_close_unref(bus);
+    return path;
 }
 
 // accountsservice normalizes (copies) the wallpaper into
@@ -97,25 +130,34 @@ QString getAccountBackground() {
     const QString userPath = accountUserObjectPath();
     if (userPath.isEmpty())
         return {};
-    QProcess get;
-    const QStringList getArgs = { "dbus-send", "--system", "--print-reply", "--dest=org.freedesktop.Accounts",
-                                  userPath, "org.freedesktop.DBus.Properties.Get",
-                                  "string:org.freedesktop.Accounts.User", "string:BackgroundFile" };
-    get.start("dbus-send", getArgs);
-    if (!get.waitForFinished(5000))
+    sd_bus* bus = nullptr;
+    if (sd_bus_open_system(&bus) < 0)
         return {};
-    const QString reply = QString::fromUtf8(get.readAllStandardOutput());
-    const QRegularExpression re("string \"([^\"]+)\"");
-    return re.match(reply).hasMatch() ? re.match(reply).captured(1) : QString();
+
+    QString result;
+    sd_bus_message* reply = callAccounts(bus, userPath.toUtf8().constData(), "org.freedesktop.DBus.Properties",
+                                         "Get", "ss", "org.freedesktop.Accounts.User", "BackgroundFile");
+    if (reply != nullptr) {
+        const char* background = nullptr;
+        if (sd_bus_message_read(reply, "v", "s", &background) >= 0 && background != nullptr)
+            result = QString::fromUtf8(background);
+        sd_bus_message_unref(reply);
+    }
+    sd_bus_flush_close_unref(bus);
+    return result;
 }
 
 void setAccountBackground(const QString& marker) {
     const QString userPath = accountUserObjectPath();
     if (userPath.isEmpty())
         return;
-    const QStringList setArgs = { "dbus-send", "--system", "--print-reply", "--dest=org.freedesktop.Accounts",
-                                  userPath, "org.freedesktop.Accounts.User.SetBackgroundFile", marker };
-    QProcess::execute("dbus-send", setArgs);
+    sd_bus* bus = nullptr;
+    if (sd_bus_open_system(&bus) < 0)
+        return;
+    sd_bus_call_method(bus, "org.freedesktop.Accounts", userPath.toUtf8().constData(),
+                       "org.freedesktop.Accounts.User", "SetBackgroundFile", nullptr, nullptr,
+                       "s", marker.toUtf8().constData());
+    sd_bus_flush_close_unref(bus);
 }
 
 // Write the marker wallpaper: 64x64 solid magenta RGB. The pixels are
