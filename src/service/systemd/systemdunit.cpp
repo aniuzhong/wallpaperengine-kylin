@@ -155,7 +155,7 @@ QString unitObjectPathFromId (const QString& unitId) {
     return QString ("/org/freedesktop/systemd1/unit/%1").arg (escaped);
 }
 
-SystemdUnit::SystemdUnit (QString unitName, QObject* parent) : QObject (parent), m_unitName (std::move (unitName)) {
+SystemdUnit::SystemdUnit(QString unitName) : m_unitName (std::move (unitName)) {
     // accept a bare name the way systemctl does: the D-Bus manager requires
     // a full unit id with the type suffix, so "linux-wallpaperengine"
     // becomes "linux-wallpaperengine.service"
@@ -164,23 +164,12 @@ SystemdUnit::SystemdUnit (QString unitName, QObject* parent) : QObject (parent),
     registerDBusTypes ();
 }
 
-SystemdUnit::~SystemdUnit () {}
+SystemdUnit::~SystemdUnit() {}
 
-QString SystemdUnit::unitName () const { return m_unitName; }
+QString SystemdUnit::unitName() const { return m_unitName; }
 
-void SystemdUnit::subscribe () {
-    if (m_subscribed)
-        return;
-    // keep the manager emitting unit signals for this client
-    callManager ("Subscribe", {}, nullptr);
-    QDBusConnection::sessionBus ().connect (kService, unitObjectPathFromId (m_unitName), kPropsIface,
-                                            "PropertiesChanged", this,
-                                            SLOT (onPropertiesChanged (QDBusMessage)));
-    m_subscribed = true;
-}
-
-bool SystemdUnit::startTransient (const QStringList& execArgs, const QMap<QString, QString>& environment,
-                                  const QMap<QString, QVariant>& extraProperties, Error* error) {
+bool SystemdUnit::startTransient(const QStringList& execArgs, const QMap<QString, QString>& environment,
+                                 const QMap<QString, QVariant>& extraProperties, Error* error) {
     if (execArgs.isEmpty ()) {
         if (error) {
             error->kind = Error::InvalidInput;
@@ -203,31 +192,30 @@ bool SystemdUnit::startTransient (const QStringList& execArgs, const QMap<QStrin
     callManager ("ResetFailedUnit", { m_unitName }, nullptr);
 
     DbusPropertyList properties;
-    properties.append ({ "Description", QDBusVariant ("wallpaper transient unit") });
-    properties.append ({ "Type", QDBusVariant ("simple") });
-    properties.append ({ "Restart", QDBusVariant ("on-failure") });
+    properties.append({ "Description", QDBusVariant ("wallpaper transient unit") });
+    properties.append({ "Type", QDBusVariant ("simple") });
+    properties.append({ "Restart", QDBusVariant ("on-failure") });
     for (auto it = extraProperties.begin (); it != extraProperties.end (); ++it)
-        properties.append ({ it.key (), QDBusVariant (it.value ()) });
+        properties.append({ it.key (), QDBusVariant (it.value ()) });
 
     const ExecStartEntry entry { command.program, command.args, false };
-    properties.append ({ "ExecStart", QDBusVariant (QVariant::fromValue (ExecStartList { entry })) });
+    properties.append({ "ExecStart", QDBusVariant (QVariant::fromValue (ExecStartList { entry })) });
 
     const AuxList aux {}; // empty aux; element signature (sba(sv)) via registered type
 
-    subscribe ();
-    const QDBusMessage reply = callManager ("StartTransientUnit",
+    const QDBusMessage reply = callManager("StartTransientUnit",
                                             { m_unitName, "replace", QVariant::fromValue (properties),
                                               QVariant::fromValue (aux) },
                                             error);
     return error == nullptr || error->kind == Error::NoError;
 }
 
-bool SystemdUnit::start (Error* error) {
-    subscribe (); // before the operation: the change signal must not be missed
+bool SystemdUnit::start(Error* error) {
     Error local;
-    const QDBusMessage reply = callManager ("StartUnit", { m_unitName, "replace" }, &local);
-    if (error) *error = local;
-    return reply.type () == QDBusMessage::ReplyMessage;
+    const QDBusMessage reply = callManager("StartUnit", { m_unitName, "replace" }, &local);
+    if (error)
+        *error = local;
+    return reply.type() == QDBusMessage::ReplyMessage;
 }
 
 bool SystemdUnit::stop (Error* error) {
@@ -238,7 +226,6 @@ bool SystemdUnit::stop (Error* error) {
 }
 
 bool SystemdUnit::restart (Error* error) {
-    subscribe ();
     Error local;
     const QDBusMessage reply = callManager ("RestartUnit", { m_unitName, "replace" }, &local);
     if (error) *error = local;
@@ -281,22 +268,5 @@ QString SystemdUnit::activeState (Error* error) const {
 }
 
 bool SystemdUnit::isActive () const { return activeState () == "active"; }
-
-void SystemdUnit::onPropertiesChanged (const QDBusMessage &message) {
-    if (message.arguments ().size () < 2)
-        return;
-    const QDBusArgument changed = message.arguments ().at (1).value<QDBusArgument> ();
-    changed.beginArray ();
-    while (!changed.atEnd ()) {
-        changed.beginStructure ();
-        QString key;
-        QDBusVariant value;
-        changed >> key >> value;
-        changed.endStructure ();
-        if (key == "ActiveState")
-            emit stateChanged (value.variant ().toString ());
-    }
-    changed.endArray ();
-}
 
 } // namespace SystemdLayer

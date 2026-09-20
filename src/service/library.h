@@ -1,28 +1,22 @@
 #pragma once
 
-#include <QImage>
 #include <QList>
 #include <QString>
 
-// Display size of the preview image decoded for each entry: 16:9, one image
-// serves the grid tile (downscaled) and the detail panel (native size).
-constexpr int kPreviewW = 360;
-constexpr int kPreviewH = kPreviewW * 9 / 16;
-
 struct WallpaperEntry {
-    QString id;      // workshop directory name, used as --bg value
-    QString title;   // project.json title
-    QString type;    // project.json type (scene/video/web)
-    QString size;    // humanized on-disk size of the wallpaper directory
-    QImage  preview; // preview decoded at display resolution (16:9); null when absent
+    QString id;          // workshop directory name, used as --bg value
+    QString title;       // project.json title
+    QString type;        // project.json type (scene/video/web)
+    quint64 sizeBytes;   // on-disk size of the wallpaper directory
 
-    // animated previews (multi-frame gif etc.): raw preview bytes for the
-    // detail panel's player; empty for static previews
-    QByteArray previewAnim;
-    bool previewAnimated = false;
+    // resolved preview file (project.json "preview" field, preview.jpg as
+    // the conventional fallback); empty when the wallpaper ships none. The
+    // frontends decode it — at their own display size, this is metadata only.
+    QString previewPath;
 };
 
 // Scan a Wallpaper Engine workshop content directory. Directories without a
-// project.json are skipped; entries are sorted by title. Previews are
-// decoded here — the ui consumes images, never paths or directory layout.
+// project.json are skipped; entries are sorted by title. Decoding and any
+// other presentation work belongs to the frontends: they get paths and
+// numbers, never images.
 QList<WallpaperEntry> scanLibrary(const QString& workshopDir);

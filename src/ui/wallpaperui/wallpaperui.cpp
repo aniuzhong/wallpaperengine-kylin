@@ -1,6 +1,7 @@
 #include "wallpaperui.h"
 #include "detailpanel.h"
 #include "griddelegate.h"
+#include "preview.h"
 
 #include "../service/config.h"
 #include "../service/engineunit.h"
@@ -140,8 +141,9 @@ void WallpaperUI::rebuildGrid () {
         item->setData (Qt::DisplayRole, entry.title);
         item->setData (Qt::UserRole, entry.type);
         item->setData (kIdRole, entry.id);
-        if (!entry.preview.isNull ())
-            item->setIcon (QIcon (QPixmap::fromImage (entry.preview)));
+        const QImage preview = decodePreview (entry.previewPath);
+        if (!preview.isNull ())
+            item->setIcon (QIcon (QPixmap::fromImage (preview)));
     }
     if (m_grid->count () > 0)
         m_grid->setCurrentRow (0);

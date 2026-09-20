@@ -39,11 +39,12 @@ RUN apt-get update \
  && apt-get install -y \
         build-essential pkg-config git ca-certificates wget \
         libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl-dev \
+        libxcb-randr0-dev \
         libglew-dev freeglut3-dev libsdl2-dev liblz4-dev \
         libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
         libxxf86vm-dev libglm-dev libglfw3-dev libmpv-dev \
         libpulse-dev libfftw3-dev libfreetype-dev libdbus-1-dev zlib1g-dev \
-        libgmp-dev qtbase5-dev \
+        libpng-dev libgmp-dev qtbase5-dev \
  && rm -rf /var/lib/apt/lists/*
 
 RUN wget -q -O /tmp/cmake.tar.gz \

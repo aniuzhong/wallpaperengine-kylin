@@ -9,8 +9,8 @@
 
 // Wallpaper UI shell (M1): a read-only library browser in the style of the
 // original. All data comes from the service layer (library scan + config) —
-// the ui knows no paths, performs no file access and holds no directory
-// knowledge; it only consumes the WallpaperEntry images and strings.
+// the ui holds no directory knowledge; the service resolves preview paths
+// and the ui decodes and renders them at its own display size.
 class WallpaperUI final : public QMainWindow {
     Q_OBJECT
 public:

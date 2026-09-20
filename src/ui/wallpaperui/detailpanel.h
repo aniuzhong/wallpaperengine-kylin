@@ -10,9 +10,9 @@
 class QMovie;
 
 // Right-hand detail column: renders one service-layer WallpaperEntry —
-// preview (animated when the entry ships a multi-frame preview), title,
-// type and size. The apply buttons (M2) and the properties editor (M4)
-// slot into this panel later.
+// preview (animated when the entry ships a gif preview), title, type and
+// size. The apply buttons (M2) and the properties editor (M4) slot into
+// this panel later.
 class DetailPanel final : public QWidget {
     Q_OBJECT
 public:

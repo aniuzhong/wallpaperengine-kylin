@@ -10,7 +10,6 @@
 #include <QProcess>
 #include <QDBusMessage>
 #include <QFile>
-#include <QSignalSpy>
 #include <QStandardPaths>
 #include <QtTest>
 
@@ -104,17 +103,6 @@ private slots:
 
         // Restart=on-failure must bring the unit back with a fresh pid
         QTRY_VERIFY_WITH_TIMEOUT (mainPid () > 0 && mainPid () != firstPid && m_unit->isActive (), 15000);
-        QVERIFY (m_unit->stop ());
-    }
-
-    void stateChanged_signalFiresOnStart () {
-        QVERIFY (installUnitFile (sleepUnitContent ()));
-        QSignalSpy spy (m_unit.get (), &SystemdUnit::stateChanged);
-        QVERIFY (spy.isValid ());
-
-        QVERIFY (m_unit->start ());
-        // the PropertiesChanged signal arrives asynchronously on the bus
-        QTRY_VERIFY_WITH_TIMEOUT (!spy.isEmpty (), 10000);
         QVERIFY (m_unit->stop ());
     }
 

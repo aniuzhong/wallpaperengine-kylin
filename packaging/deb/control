@@ -5,7 +5,7 @@ Priority: optional
 Architecture: amd64
 Maintainer: Aniuzhong <101186392+aniuzhong@users.noreply.github.com>
 Homepage: https://github.com/aniuzhong/wallpaperengine-kylin
-Depends: libavcodec58, libavformat58, libavutil56, libdbus-1-3, libfreetype6, libglew2.1, libglfw3, libgl1, liblz4-1, libmpv1, libpulse0, libqt5core5a, libqt5dbus5, libqt5gui5, libqt5widgets5, libsdl2-2.0-0, libswresample3, libx11-6, libxcb1, libxrandr2
+Depends: libavcodec58, libavformat58, libavutil56, libdbus-1-3, libfreetype6, libglew2.1, libglfw3, libgl1, liblz4-1, libmpv1, libpng16-16, libpulse0, libqt5core5a, libqt5dbus5, libqt5gui5, libqt5widgets5, libsdl2-2.0-0, libswresample3, libx11-6, libxcb-randr1, libxcb1, libxrandr2
 Description: Wallpaper Engine wallpapers on Kylin V10 SP1 (linux-wallpaperengine)
  Repackaging of linux-wallpaperengine for Kylin V10 SP1 with UKUI desktop
  integration: renders Steam Workshop wallpapers as the desktop background.

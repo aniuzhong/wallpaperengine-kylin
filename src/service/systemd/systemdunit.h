@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QDBusMessage>
-#include <QObject>
 #include <QString>
 
 namespace SystemdLayer {
@@ -17,12 +16,12 @@ struct Error {
 
 // One systemd user unit and its lifecycle, backed by the
 // org.freedesktop.systemd1 D-Bus API on the session bus. Knows nothing
-// about wallpapers: callers feed unit text and argv.
-class SystemdUnit : public QObject {
-    Q_OBJECT
+// about wallpapers: callers feed unit text and argv. State is read by
+// polling activeState(); every lifecycle call is synchronous.
+class SystemdUnit {
 public:
-    explicit SystemdUnit(QString unitName, QObject* parent = nullptr);
-    ~SystemdUnit() override;
+    explicit SystemdUnit(QString unitName);
+    ~SystemdUnit();
 
     QString unitName() const;
 
@@ -43,19 +42,8 @@ public:
     QString activeState(Error* error = nullptr) const;
     bool isActive() const;
 
-signals:
-    // Emitted when the manager reports an ActiveState change for this unit.
-    void stateChanged(const QString& activeState);
-
-private slots:
-    void onPropertiesChanged(const QDBusMessage& message);
-
 private:
-    void subscribe();
-    static QString escapeUnitId(const QString& unitId);
-
     QString m_unitName;
-    bool m_subscribed = false;
 };
 
 // Reload the user manager so freshly written unit files are picked up.

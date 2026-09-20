@@ -19,21 +19,22 @@ struct Status {
 
 // Scan /proc for the peony desktop process and check whether the shim is
 // mapped into it.
-Status detect ();
+Status detect();
 
 // Locate libpeony-alpha-shim.so on disk: probe the frontend binary's own
 // directory (build tree, and layouts that ship the pair together), the
 // library directory a bin/ + lib/ install() layout produces, then the
 // standard system library paths. Returns an empty string when nothing
 // matches.
-QString locateShim ();
+QString locateShim();
 
 // Full integration pass (absorbs the former inject-peony.sh):
-//   1. point accountsservice/gsettings at a generated marker wallpaper
-//      (the shim nullifies it at load time — the color is irrelevant)
+//   1. point accountsservice/gsettings at a marker wallpaper generated
+//      with libpng in the user data dir (the shim nullifies it at load
+//      time — the color is irrelevant)
 //   2. stop peony, wait for exit (TERM, then KILL), clear the single-
 //      instance lock so our injected instance wins the race
-//   3. relaunch peony via systemd-run --user with LD_PRELOAD and the
+//   3. relaunch peony via a transient systemd unit with LD_PRELOAD and the
 //      shim environment (Restart=on-failure keeps it injected across
 //      crashes)
 //   4. verify: process alive, shim mapped

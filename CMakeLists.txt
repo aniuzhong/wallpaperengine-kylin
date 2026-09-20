@@ -9,6 +9,8 @@ find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets DBus)
 find_package(X11 REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(XCB REQUIRED xcb)
+pkg_check_modules(XCB_RANDR REQUIRED xcb-randr)
+pkg_check_modules(PNG REQUIRED libpng)
 
 # ---- wallpaper_service
 # Control core (frontend-free): the generic systemd D-Bus client plus the
@@ -24,8 +26,8 @@ add_library(wallpaper_service STATIC
     src/service/integration.cpp
     src/service/engineunit.cpp
 )
-target_include_directories(wallpaper_service PUBLIC src/service src/service/systemd)
-target_link_libraries(wallpaper_service PUBLIC Qt5::Core Qt5::Gui Qt5::DBus)
+target_include_directories(wallpaper_service PUBLIC src/service src/service/systemd ${XCB_RANDR_INCLUDE_DIRS} ${PNG_INCLUDE_DIRS})
+target_link_libraries(wallpaper_service PUBLIC Qt5::Core Qt5::DBus ${XCB_LIBRARIES} ${XCB_RANDR_LIBRARIES} ${PNG_LIBRARIES})
 target_compile_options(wallpaper_service PRIVATE -Wall -Wextra)
 
 # ---- wallpaper-engine
@@ -38,6 +40,7 @@ add_executable(wallpaper-engine
     src/ui/wallpaperui/detailpanel.cpp
     src/ui/wallpaperui/griddelegate.cpp
     src/ui/wallpaperui/placeholder.cpp
+    src/ui/wallpaperui/preview.cpp
 )
 target_link_libraries(wallpaper-engine PRIVATE Qt5::Core Qt5::Widgets wallpaper_service)
 target_include_directories(wallpaper-engine PRIVATE src/ui)
