@@ -22,11 +22,20 @@ add_executable (library_test library_test.cpp ../src/service/library.cpp)
 target_link_libraries (library_test PRIVATE Qt5::Core Qt5::Test nlohmann_json::nlohmann_json)
 add_test (NAME library_test COMMAND library_test)
 
+# smoke: the service archive must link and run WITHOUT Qt at all — guards
+# the layer's Qt-free boundary (any Qt include in src/service fails this
+# target's link, since no Qt library is on its link line)
+add_executable (service_smoke_test service_smoke_test.cpp
+    ../src/service/argvbuilder.cpp ../src/service/config.cpp
+    ../src/service/library.cpp ../src/service/systemd/unitbuilder.cpp)
+target_link_libraries (service_smoke_test PRIVATE nlohmann_json::nlohmann_json)
+add_test (NAME service_smoke_test COMMAND service_smoke_test)
+
 # T3: headless CLI end-to-end against the real user manager (isolated by
 # the dedicated linux-wallpaperengine-e2e-test unit name; config stays the user's own and is
 # restored by cleanup)
 add_executable (cli_e2e_test cli_e2e_test.cpp ../src/service/config.cpp ../src/service/engineunit.cpp ../src/service/argvbuilder.cpp)
-target_link_libraries (cli_e2e_test PRIVATE Qt5::Core Qt5::Gui Qt5::DBus Qt5::Test wallpaper_service)
+target_link_libraries (cli_e2e_test PRIVATE Qt5::Core Qt5::DBus Qt5::Test wallpaper_service)
 target_compile_definitions (cli_e2e_test PRIVATE
     WALLPAPER_ENGINE_BIN="${CMAKE_BINARY_DIR}/wallpaper-engine")
 add_test (NAME cli_e2e_test COMMAND cli_e2e_test)

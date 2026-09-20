@@ -25,8 +25,10 @@ FetchContent_MakeAvailable(nlohmann_json)
 # ---- wallpaper_service
 # Control core (frontend-free): the generic systemd D-Bus client plus the
 # wallpaper domain logic (config persistence, argv mapping, library scan,
-# peony integration, engine-unit facade). Frontends link this and nothing
-# else — they must never talk to systemctl or craft unit files themselves.
+# peony integration, engine-unit facade). Qt-free by design — sd-bus for the
+# buses, nlohmann for JSON, xcb-randr and libpng where the platform needs
+# them. Frontends link this and nothing else — they must never talk to
+# systemctl or craft unit files themselves.
 add_library(wallpaper_service STATIC
     src/service/systemd/systemdunit.cpp
     src/service/systemd/unitbuilder.cpp
@@ -37,7 +39,7 @@ add_library(wallpaper_service STATIC
     src/service/engineunit.cpp
 )
 target_include_directories(wallpaper_service PUBLIC src/service src/service/systemd ${XCB_RANDR_INCLUDE_DIRS} ${PNG_INCLUDE_DIRS})
-target_link_libraries(wallpaper_service PUBLIC Qt5::Core nlohmann_json::nlohmann_json ${XCB_LIBRARIES} ${XCB_RANDR_LIBRARIES} ${PNG_LIBRARIES} ${LIBSYSTEMD_LIBRARIES})
+target_link_libraries(wallpaper_service PUBLIC nlohmann_json::nlohmann_json ${XCB_LIBRARIES} ${XCB_RANDR_LIBRARIES} ${PNG_LIBRARIES} ${LIBSYSTEMD_LIBRARIES})
 target_compile_options(wallpaper_service PRIVATE -Wall -Wextra)
 
 # ---- wallpaper-engine
