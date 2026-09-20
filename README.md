@@ -1,3 +1,5 @@
+<img src="icon/wallpaperengine-kylin.png" alt="" width="120" align="right">
+
 # linux-wallpaperengine for Kylin V10 SP1
 
 Run [Steam Workshop](https://steamcommunity.com/app/431960/workshop/)
@@ -54,5 +56,7 @@ produces the .deb. The Kylin base image is provisioned by
     src/                service layer (Qt-free), CLI, browser frontend
     src/hook/           LD_PRELOAD shim for peony-qt-desktop
     src/ui/             the single-page app, embedded at configure time
+    icon/               the app icon: the 1024 master, and the 256 that ships
+                        (launcher entry, pixmaps, hicolor, favicon)
     patches/            the engine patch series
     tests/              pure-logic tests, plus integration and smoke tests

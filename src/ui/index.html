@@ -1,26 +1,27 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Wallpaper Engine</title>
+<link rel="icon" type="image/png" href="/icon.png">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
 
 <header class="titlebar">
   <div class="title">Wallpaper Engine <span class="muted">for Kylin</span></div>
-  <div class="status"><span class="dot" id="status-dot"></span><span id="status-text">连接中…</span></div>
+  <div class="status"><span class="dot" id="status-dot"></span><span id="status-text">Connecting…</span></div>
 </header>
 
 <nav class="toolbar">
   <div class="tabs">
-    <button class="tab active" data-tab="installed">已安装</button>
-    <button class="tab" data-tab="displays">显示器</button>
-    <button class="tab" data-tab="settings">设置</button>
+    <button class="tab active" data-tab="installed">Installed</button>
+    <button class="tab" data-tab="displays">Displays</button>
+    <button class="tab" data-tab="settings">Settings</button>
   </div>
   <div class="tools">
-    <button class="btn" id="btn-integration">桌面集成</button>
+    <button class="btn" id="btn-integration">Desktop integration</button>
   </div>
 </nav>
 
@@ -29,15 +30,15 @@
 
     <div class="filterbar">
       <div class="search">
-        <input id="search" type="search" placeholder="搜索" autocomplete="off">
+        <input id="search" type="search" placeholder="Search" autocomplete="off">
       </div>
-      <button class="btn" id="btn-random">随机</button>
+      <button class="btn" id="btn-random">Random</button>
       <div class="spacer"></div>
-      <label class="sort">排序
+      <label class="sort">Sort
         <select id="sort">
-          <option value="name">名称</option>
-          <option value="size">大小</option>
-          <option value="type">类型</option>
+          <option value="name">Name</option>
+          <option value="size">Size</option>
+          <option value="type">Type</option>
         </select>
       </label>
     </div>
@@ -53,12 +54,12 @@
 
     <div class="panel" id="panel-settings" hidden>
       <form class="settings" id="settings-form">
-        <div class="field"><label>引擎路径</label><input name="enginePath" type="text"></div>
-        <div class="field"><label>素材目录</label><input name="assetsDir" type="text"></div>
-        <div class="field"><label>创意工坊目录</label><input name="workshopDir" type="text"></div>
-        <div class="field"><label>帧率</label><input name="fps" type="number" min="1" max="240"></div>
-        <div class="field"><label>音量</label><input name="volume" type="number" min="0" max="100"></div>
-        <div class="field"><label>缩放</label>
+        <div class="field"><label>Engine path</label><input name="enginePath" type="text"></div>
+        <div class="field"><label>Assets directory</label><input name="assetsDir" type="text"></div>
+        <div class="field"><label>Workshop directory</label><input name="workshopDir" type="text"></div>
+        <div class="field"><label>Frame rate</label><input name="fps" type="number" min="1" max="240"></div>
+        <div class="field"><label>Volume</label><input name="volume" type="number" min="0" max="100"></div>
+        <div class="field"><label>Scaling</label>
           <select name="scaling">
             <option value="fill">fill</option>
             <option value="fit">fit</option>
@@ -66,7 +67,7 @@
             <option value="default">default</option>
           </select>
         </div>
-        <div class="field"><label>边缘</label>
+        <div class="field"><label>Clamp</label>
           <select name="clamp">
             <option value="border">border</option>
             <option value="repeat">repeat</option>
@@ -75,15 +76,15 @@
           </select>
         </div>
         <div class="checks">
-          <label><input name="silent" type="checkbox"> 静音</label>
-          <label><input name="fullscreenPause" type="checkbox"> 全屏时暂停</label>
-          <label><input name="automute" type="checkbox"> 其他程序发声时静音</label>
-          <label><input name="disableParticles" type="checkbox"> 禁用粒子</label>
-          <label><input name="disableMouse" type="checkbox"> 禁用鼠标交互</label>
-          <label><input name="disableParallax" type="checkbox"> 禁用视差</label>
+          <label><input name="silent" type="checkbox"> Silent</label>
+          <label><input name="fullscreenPause" type="checkbox"> Pause on fullscreen</label>
+          <label><input name="automute" type="checkbox"> Mute while other apps play audio</label>
+          <label><input name="disableParticles" type="checkbox"> Disable particles</label>
+          <label><input name="disableMouse" type="checkbox"> Disable mouse input</label>
+          <label><input name="disableParallax" type="checkbox"> Disable parallax</label>
         </div>
         <div class="actions">
-          <button class="btn primary" type="submit">保存并重启引擎</button>
+          <button class="btn primary" type="submit">Save and restart engine</button>
         </div>
       </form>
     </div>
@@ -94,28 +95,28 @@
     <div class="preview" id="preview">
       <img id="preview-img" alt="" hidden>
       <video id="preview-video" muted loop playsinline hidden></video>
-      <div class="preview-empty" id="preview-empty">选择一张壁纸</div>
-      <button class="play" id="btn-apply" title="应用" hidden>▶</button>
+      <div class="preview-empty" id="preview-empty">Select a wallpaper</div>
+      <button class="play" id="btn-apply" title="Apply" hidden>▶</button>
     </div>
 
-    <h1 class="detail-title" id="detail-title">未选择</h1>
+    <h1 class="detail-title" id="detail-title">Nothing selected</h1>
     <div class="detail-meta" id="detail-meta"></div>
     <div class="detail-tags" id="detail-tags"></div>
 
     <div class="detail-actions">
-      <button class="btn primary block" id="btn-apply-2" disabled>应用到桌面</button>
-      <button class="btn danger block" id="btn-stop">停止壁纸</button>
+      <button class="btn primary block" id="btn-apply-2" disabled>Apply to desktop</button>
+      <button class="btn danger block" id="btn-stop">Stop wallpaper</button>
     </div>
 
-    <div class="section">属性</div>
+    <div class="section">Properties</div>
     <div class="properties" id="properties">
-      <button class="btn block" id="btn-properties" disabled>加载引擎属性</button>
+      <button class="btn block" id="btn-properties" disabled>Load engine properties</button>
     </div>
 
-    <div class="section">桌面集成</div>
-    <div class="integration" id="integration">检测中…</div>
+    <div class="section">Desktop integration</div>
+    <div class="integration" id="integration">Checking…</div>
 
-    <div class="section">屏幕</div>
+    <div class="section">Screens</div>
     <div class="screens" id="screens"></div>
   </aside>
 </main>
@@ -123,7 +124,7 @@
 <footer class="bottombar">
   <span class="muted" id="footer-info"></span>
   <div class="spacer"></div>
-  <button class="btn danger" id="btn-quit">退出</button>
+  <button class="btn danger" id="btn-quit">Quit</button>
 </footer>
 
 <div class="toast" id="toast" hidden></div>

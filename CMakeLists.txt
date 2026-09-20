@@ -83,13 +83,34 @@ file(READ ${CMAKE_SOURCE_DIR}/src/ui/style.css UI_STYLE_CSS)
 file(READ ${CMAKE_SOURCE_DIR}/src/ui/app.js UI_APP_JS)
 configure_file(${CMAKE_SOURCE_DIR}/cmake/uiassets.cpp.in ${CMAKE_BINARY_DIR}/uiassets.cpp @ONLY)
 
+# The app icon doubles as the page's favicon: launched with --app= the window
+# has no other place to get an icon from, and Chromium takes it from here.
+# Embedded as bytes rather than as a raw string literal — PNG data contains
+# NULs, and a string literal would stop at the first one.
+file(READ ${CMAKE_SOURCE_DIR}/icon/wallpaper-engine-256.png UI_ICON_HEX HEX)
+string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," UI_ICON_BYTES "${UI_ICON_HEX}")
+file(WRITE ${CMAKE_BINARY_DIR}/uiicon.h
+"// Generated from icon/wallpaper-engine-256.png at configure time; do not edit.
+#pragma once
+
+#include <cstddef>
+
+namespace Ui {
+
+static const unsigned char kIconPng[] = {${UI_ICON_BYTES}};
+static const std::size_t kIconPngSize = sizeof(kIconPng);
+
+} // namespace Ui
+")
+
 # configure_file does not watch its inputs: without this, editing the page
 # and running `cmake --build` links the previous assets in and the change
 # appears to do nothing.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     ${CMAKE_SOURCE_DIR}/src/ui/index.html
     ${CMAKE_SOURCE_DIR}/src/ui/style.css
-    ${CMAKE_SOURCE_DIR}/src/ui/app.js)
+    ${CMAKE_SOURCE_DIR}/src/ui/app.js
+    ${CMAKE_SOURCE_DIR}/icon/wallpaper-engine-256.png)
 
 add_executable(wallpaper-engine
     src/main.cpp

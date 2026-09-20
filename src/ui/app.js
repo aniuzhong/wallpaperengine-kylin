@@ -12,7 +12,6 @@ const state = {
   integration: null,
   selected: null,
   properties: null,
-  job: null,
   filter: '',
   sort: 'name',
 };
@@ -44,11 +43,13 @@ function toast(message, kind) {
   toastTimer = setTimeout(() => { node.hidden = true; }, kind === 'error' ? 6000 : 3000);
 }
 
-const TYPE_LABELS = { scene: '场景', video: '视频', web: '网页', application: '程序' };
-const typeLabel = (type) => TYPE_LABELS[type] || type || '未知';
+// The engine's own names for a wallpaper's type (Scene/Video/Web), plus the
+// one the workshop uses for wallpaper applications.
+const TYPE_LABELS = { scene: 'Scene', video: 'Video', web: 'Web', application: 'Application' };
+const typeLabel = (type) => TYPE_LABELS[type] || type || 'Unknown';
 
 function formatSize(bytes) {
-  if (!bytes) return '未知大小';
+  if (!bytes) return 'Unknown size';
   const mb = bytes / (1024 * 1024);
   if (mb < 1) return (bytes / 1024).toFixed(0) + ' KB';
   if (mb < 1024) return mb.toFixed(0) + ' MB';
@@ -73,7 +74,9 @@ function visibleEntries() {
   const entries = state.library.filter((entry) =>
     !needle || entry.title.toLowerCase().includes(needle) || entry.id.includes(needle));
 
-  const byName = (a, b) => a.title.localeCompare(b.title, 'zh-Hans-CN');
+  // titles come from the workshop in whatever language their author used, so
+  // they sort under the browser's locale, not a fixed one
+  const byName = (a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
   if (state.sort === 'size') entries.sort((a, b) => b.sizeBytes - a.sizeBytes || byName(a, b));
   else if (state.sort === 'type') entries.sort((a, b) => a.type.localeCompare(b.type) || byName(a, b));
   else entries.sort(byName);
@@ -88,11 +91,11 @@ function renderGrid() {
   const empty = $('grid-empty');
   if (!state.library.length) {
     empty.textContent = state.config
-      ? '创意工坊目录里没有壁纸：' + state.config.workshopDir
-      : '没有找到壁纸。';
+      ? 'No wallpapers in the workshop directory: ' + state.config.workshopDir
+      : 'No wallpapers found.';
     empty.hidden = false;
   } else if (!entries.length) {
-    empty.textContent = '没有匹配「' + state.filter + '」的壁纸。';
+    empty.textContent = 'Nothing matches "' + state.filter + '".';
     empty.hidden = false;
   } else {
     empty.hidden = true;
@@ -124,7 +127,7 @@ function renderGrid() {
     if (currentScreens(entry.id).length) {
       const current = document.createElement('span');
       current.className = 'badge current';
-      current.textContent = '使用中';
+      current.textContent = 'Active';
       badges.appendChild(current);
     }
     thumb.appendChild(badges);
@@ -152,7 +155,7 @@ function renderDetail() {
 
   if (!entry) {
     $('preview-empty').hidden = false;
-    $('detail-title').textContent = '未选择';
+    $('detail-title').textContent = 'Nothing selected';
     $('detail-meta').textContent = '';
     $('detail-tags').textContent = '';
     $('btn-apply').hidden = true;
@@ -196,7 +199,7 @@ function propertiesButton() {
   const button = document.createElement('button');
   button.className = 'btn block';
   button.id = 'btn-properties';
-  button.textContent = '加载引擎属性';
+  button.textContent = 'Load engine properties';
   button.disabled = !state.selected;
   button.addEventListener('click', loadProperties);
   return button;
@@ -212,12 +215,12 @@ function renderProperties() {
   if (state.properties.pending) {
     const waiting = document.createElement('div');
     waiting.className = 'muted';
-    waiting.textContent = '正在向引擎查询…';
+    waiting.textContent = 'Asking the engine…';
     box.appendChild(waiting);
     return;
   }
   const pre = document.createElement('pre');
-  pre.textContent = state.properties.output || '（引擎没有输出）';
+  pre.textContent = state.properties.output || '(the engine printed nothing)';
   box.appendChild(pre);
 }
 
@@ -228,7 +231,7 @@ function renderStatus() {
 
   if (!status) {
     dot.className = 'dot';
-    text.textContent = '连接中…';
+    text.textContent = 'Connecting…';
     return;
   }
   const engineState = status.state;
@@ -236,7 +239,8 @@ function renderStatus() {
   text.textContent = stateName(engineState) + (status.busError ? ' · ' + status.busError : '');
 }
 
-const STATE_NAMES = { active: '运行中', inactive: '已停止', failed: '启动失败', activating: '启动中', unknown: '未知' };
+// systemd's ActiveState values, in the words the rest of the desktop uses.
+const STATE_NAMES = { active: 'Running', inactive: 'Stopped', failed: 'Failed', activating: 'Starting', unknown: 'Unknown' };
 const stateName = (name) => STATE_NAMES[name] || name;
 
 function renderScreens() {
@@ -254,11 +258,11 @@ function renderScreens() {
     value.className = 'value';
     const id = state.status && state.status.screens ? state.status.screens[screen] : null;
     const entry = id ? entryById(id) : null;
-    value.textContent = entry ? entry.title : id ? '#' + id : '未设置';
+    value.textContent = entry ? entry.title : id ? '#' + id : 'Not set';
 
     const button = document.createElement('button');
     button.className = 'btn';
-    button.textContent = '应用到此屏';
+    button.textContent = 'Apply to this screen';
     button.disabled = !state.selected;
     button.addEventListener('click', () => applyTo(screen));
 
@@ -282,11 +286,11 @@ function renderDisplays() {
     value.className = 'value';
     const id = state.status && state.status.screens ? state.status.screens[screen] : null;
     const entry = id ? entryById(id) : null;
-    value.textContent = entry ? entry.title + '  ·  #' + entry.id : id ? '#' + id : '未设置';
+    value.textContent = entry ? entry.title + '  ·  #' + entry.id : id ? '#' + id : 'Not set';
 
     const button = document.createElement('button');
     button.className = 'btn';
-    button.textContent = '用当前选中项替换';
+    button.textContent = 'Replace with selection';
     button.disabled = !state.selected;
     button.addEventListener('click', () => applyTo(screen));
 
@@ -300,20 +304,20 @@ function renderIntegration() {
   const status = state.integration;
   box.textContent = '';
   if (!status) {
-    box.textContent = '检测中…';
+    box.textContent = 'Checking…';
     return;
   }
 
   const line = document.createElement('div');
   if (status.configured) {
     line.className = 'ok';
-    line.textContent = '桌面已接管（peony pid ' + status.peonyPid + '，shim 已注入）';
+    line.textContent = 'Desktop taken over (peony pid ' + status.peonyPid + ', shim injected)';
   } else if (status.peonyPid) {
     line.className = 'bad';
-    line.textContent = 'peony 正在运行，但未注入 shim —— 桌面图标会盖住壁纸';
+    line.textContent = 'peony is running without the shim — desktop icons will cover the wallpaper';
   } else {
     line.className = 'bad';
-    line.textContent = '未检测到 peony 桌面进程';
+    line.textContent = 'No peony desktop process found';
   }
   box.appendChild(line);
 
@@ -322,7 +326,7 @@ function renderIntegration() {
   if (status.configured) {
     const remove = document.createElement('button');
     remove.className = 'btn block';
-    remove.textContent = '移除桌面集成';
+    remove.textContent = 'Remove desktop integration';
     remove.addEventListener('click', removeIntegration);
     box.appendChild(remove);
   }
@@ -330,18 +334,9 @@ function renderIntegration() {
 
 function renderFooter() {
   if (!state.config) return;
+  const count = state.library.length;
   $('footer-info').textContent =
-    state.library.length + ' 张壁纸  ·  ' + state.config.enginePath;
-}
-
-function renderAll() {
-  renderGrid();
-  renderDetail();
-  renderStatus();
-  renderScreens();
-  renderDisplays();
-  renderIntegration();
-  renderFooter();
+    count + (count === 1 ? ' wallpaper  ·  ' : ' wallpapers  ·  ') + state.config.enginePath;
 }
 
 // ---- actions --------------------------------------------------------------
@@ -367,22 +362,22 @@ async function applyTo(screen) {
   if (screen) body.screen = screen;
   try {
     await api('/api/switch', { method: 'POST', body: JSON.stringify(body) });
-    toast('已应用「' + (entryById(state.selected) || {}).title + '」，等待引擎启动…');
+    toast('Applied "' + (entryById(state.selected) || {}).title + '" — waiting for the engine');
     setTimeout(refreshStatus, 600);
     setTimeout(refreshStatus, 2000);
     setTimeout(refreshStatus, 4000);
   } catch (error) {
-    toast('应用失败：' + error.message, 'error');
+    toast('Could not apply: ' + error.message, 'error');
   }
 }
 
 async function stopEngine() {
   try {
     await api('/api/stop', { method: 'POST' });
-    toast('已停止');
+    toast('Stopped');
     refreshStatus();
   } catch (error) {
-    toast('停止失败：' + error.message, 'error');
+    toast('Could not stop: ' + error.message, 'error');
   }
 }
 
@@ -402,32 +397,32 @@ async function loadProperties() {
         return;
       }
     }
-    state.properties = { output: '引擎没有在预期时间内返回。' };
+    state.properties = { output: 'The engine did not answer in time.' };
     renderProperties();
   } catch (error) {
-    state.properties = { output: '读取属性失败：' + error.message };
+    state.properties = { output: 'Could not read properties: ' + error.message };
     renderProperties();
   }
 }
 
 async function setupIntegration() {
-  toast('正在接管桌面…');
+  toast('Taking over the desktop…');
   try {
     await api('/api/integration/setup', { method: 'POST' });
-    toast('桌面集成完成', 'ok');
+    toast('Desktop integration configured', 'ok');
   } catch (error) {
-    toast('桌面集成失败：' + error.message, 'error');
+    toast('Desktop integration failed: ' + error.message, 'error');
   }
   await refreshIntegration();
 }
 
 async function removeIntegration() {
-  toast('正在恢复桌面…');
+  toast('Restoring the desktop…');
   try {
     await api('/api/integration/remove', { method: 'POST' });
-    toast('已移除，桌面壁纸已还原', 'ok');
+    toast('Removed — the desktop wallpaper is back', 'ok');
   } catch (error) {
-    toast('移除失败：' + error.message, 'error');
+    toast('Could not remove: ' + error.message, 'error');
   }
   await refreshIntegration();
 }
@@ -445,11 +440,11 @@ async function saveSettings(event) {
 
   try {
     await api('/api/config', { method: 'POST', body: JSON.stringify(patch) });
-    toast('已保存，引擎正在重启', 'ok');
+    toast('Saved — the engine is restarting', 'ok');
     await refreshConfig();
     setTimeout(refreshStatus, 1500);
   } catch (error) {
-    toast('保存失败：' + error.message, 'error');
+    toast('Could not save: ' + error.message, 'error');
   }
 }
 
@@ -460,7 +455,7 @@ async function quit() {
     /* the server is going away; the fetch may not even complete */
   }
   document.body.innerHTML =
-    '<p style="margin:40px;font:14px sans-serif;color:#bbb">服务已停止，可以关闭此窗口了。</p>';
+    '<p style="margin:40px;font:14px sans-serif;color:#bbb">The service has stopped. You can close this window.</p>';
 }
 
 // ---- data loading ---------------------------------------------------------
@@ -562,7 +557,7 @@ async function start() {
     await refreshStatus();
     if (!state.selected && state.library.length) select(state.library[0].id);
   } catch (error) {
-    toast('初始化失败：' + error.message, 'error');
+    toast('Could not start: ' + error.message, 'error');
   }
   setInterval(heartbeat, 10000);
   setInterval(() => refreshStatus().catch(() => {}), 3000);

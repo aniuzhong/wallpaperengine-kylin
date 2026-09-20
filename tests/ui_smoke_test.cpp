@@ -172,6 +172,13 @@ int main () {
     const std::string cookie = sessionCookieOf (home);
     check (!cookie.empty (), "the app response hands out a session cookie");
 
+    // the window icon: --app= takes it from the favicon, and a browser asks
+    // for it before it holds anything
+    const std::string icon = get (port, "/icon.png", "");
+    check (startsWith (icon, "HTTP/1.1 200"), "the icon is served without a cookie");
+    check (contains (icon, "Content-Type: image/png"), "the icon is served as a PNG");
+    check (bodyOf (icon).compare (0, 8, std::string ("\x89PNG\r\n\x1a\n", 8)) == 0, "the icon body is a real PNG");
+
     const std::string cookieHeader = "Cookie: " + cookie + "\r\n";
     const std::string foreignHost = httpRequest (
         port, "GET /api/status HTTP/1.1\r\nHost: rebind.example.com\r\n" + cookieHeader + "Connection: close\r\n\r\n");

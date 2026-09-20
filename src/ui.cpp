@@ -7,6 +7,7 @@
 #include "library.h"
 #include "report.h"
 #include "uiassets.h"
+#include "uiicon.h" // generated from icon/wallpaper-engine-256.png
 #include "uilaunch.h"
 #include "uivalidate.h"
 
@@ -263,7 +264,8 @@ void sendFile(const httplib::Request& req, httplib::Response& res, const std::st
 // app itself carries nothing private, and serving it is what hands the
 // cookie out.
 bool isPublicAsset(const httplib::Request& req) {
-    return req.method == "GET" && (req.path == "/" || req.path == "/app.js" || req.path == "/style.css");
+    return req.method == "GET" && (req.path == "/" || req.path == "/app.js" || req.path == "/style.css" ||
+                                   req.path == "/icon.png");
 }
 
 bool authorized(const httplib::Request& req, const State& state) {
@@ -342,6 +344,13 @@ void registerRoutes(httplib::Server& server, const std::shared_ptr<State>& state
     server.Get("/app.js", [](const httplib::Request&, httplib::Response& res) {
         res.set_header("Cache-Control", "no-store");
         res.set_content(appJs(), "application/javascript; charset=utf-8");
+    });
+
+    // The same icon the launcher installs, so the app window carries it too:
+    // in --app= mode the window icon comes from the page's favicon.
+    server.Get("/icon.png", [](const httplib::Request&, httplib::Response& res) {
+        res.set_header("Cache-Control", "max-age=3600");
+        res.set_content(reinterpret_cast<const char*>(kIconPng), kIconPngSize, "image/png");
     });
 
     server.Post("/api/heartbeat", [](const httplib::Request&, httplib::Response& res) {
