@@ -32,6 +32,12 @@ bool isPeonyDesktopCmdline(const std::string& cmdline);
 std::string buildWallpaperList(const std::string& marker, const std::string& normalized,
                                const std::string& previous);
 
+// The first path of such a list — the wallpaper the desktop had before setup
+// ran. teardown() recovers it this way when the recorded copy is missing
+// (an install from before the record existed): the list the running peony
+// was launched with is then the only place the path survives.
+std::string firstWallpaperIn(const std::string& list);
+
 // The environment the injected peony is launched with. The shim reads all
 // three at load time; without PEONY_ALPHA_WALLPAPER it stays inert.
 std::map<std::string, std::string> buildShimEnvironment(const std::string& shimPath,

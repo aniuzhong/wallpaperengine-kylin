@@ -1,9 +1,40 @@
 #!/bin/sh
-# Best-effort stop of the user units. prerm runs as root, so a plain
+# Best-effort teardown of the per-user pieces. prerm runs as root, so a plain
 # `systemctl --user` would target root's own (usually absent) manager —
 # reach every running graphical session through its runtime bus instead.
-# Units are transient/user-scoped: anything unreachable here disappears
-# with the session anyway.
+#
+# On removal (not on upgrade) the desktop is handed back first: the injected
+# peony runs under a transient unit of ours, and the wallpaper accountsservice
+# was pointed at is a marker file that only we know is a placeholder. Skip
+# that and uninstalling leaves a magenta desktop with no obvious way back.
+case "$1" in
+remove|purge)
+    for runtime in /run/user/[0-9]*; do
+        [ -d "$runtime" ] || continue
+        uid=$(basename "$runtime")
+        user=$(getent passwd "$uid" 2>/dev/null | cut -d: -f1)
+        [ -n "$user" ] || continue
+        [ -x /opt/linux-wallpaperengine/bin/wallpaper-engine ] || continue
+
+        # HOME has to be the user's: the config and the recorded previous
+        # wallpaper both live under it, and runuser would otherwise hand over
+        # root's.
+        home=$(getent passwd "$uid" 2>/dev/null | cut -d: -f6)
+        if [ -x /sbin/runuser ]; then
+            runuser -u "$user" -- env HOME="$home" XDG_RUNTIME_DIR="$runtime" \
+                DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
+                /opt/linux-wallpaperengine/bin/wallpaper-engine remove-integration \
+                >/dev/null 2>&1 || true
+        elif [ -x /bin/su ]; then
+            su -s /bin/sh "$user" -c "HOME='$home' XDG_RUNTIME_DIR='$runtime' \
+                DBUS_SESSION_BUS_ADDRESS='unix:path=$runtime/bus' \
+                /opt/linux-wallpaperengine/bin/wallpaper-engine remove-integration" \
+                >/dev/null 2>&1 || true
+        fi
+    done
+    ;;
+esac
+
 if [ -x /bin/systemctl ]; then
     for runtime in /run/user/[0-9]*; do
         [ -d "$runtime" ] || continue

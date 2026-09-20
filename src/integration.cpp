@@ -33,6 +33,14 @@ std::string markerPath() {
     return dataDir() + "/lwe-alpha-wallpaper.png";
 }
 
+// What the desktop's wallpaper was before setup pointed it at the marker.
+// Written by setup(), read (and removed) by teardown(); without it the only
+// remaining copy is inside the environment the injected peony was launched
+// with.
+std::string previousBackgroundPath() {
+    return dataDir() + "/previous-background";
+}
+
 // read a (small) file whole; /proc files report size 0, so drain with
 // reads instead of trusting the file size
 bool readSmallFile(const std::string& path, std::string& out) {
@@ -70,6 +78,31 @@ int64_t findPeonyPid() {
     return pids.empty() ? 0 : pids.front();
 }
 
+// One variable out of the running peony's environment. This is the kernel's
+// copy of what the process was exec'd with, so it still shows the launch-time
+// variables even though the shim drops LD_PRELOAD from the live environment.
+std::string peonyEnvValue(const std::string& name) {
+    const int64_t pid = findPeonyPid();
+    if (pid == 0)
+        return {};
+    std::string environment;
+    if (!readSmallFile("/proc/" + std::to_string(pid) + "/environ", environment))
+        return {};
+
+    const std::string prefix = name + "=";
+    size_t start = 0;
+    while (start < environment.size()) {
+        const size_t end = environment.find('\0', start);
+        const size_t stop = end == std::string::npos ? environment.size() : end;
+        const std::string entry = environment.substr(start, stop - start);
+        if (entry.rfind(prefix, 0) == 0)
+            return entry.substr(prefix.size());
+        start = stop + 1;
+    }
+    return {};
+}
+
+
 bool shimMapped(int64_t pid) {
     std::string maps;
     return readSmallFile("/proc/" + std::to_string(pid) + "/maps", maps) &&
@@ -88,6 +121,28 @@ bool waitForPeonyExit(int timeoutMs) {
         timeoutMs -= 100;
     }
     return peonyGone();
+}
+
+// SIGTERM the desktop, then SIGKILL whatever is left after a grace period.
+void stopPeonyProcesses() {
+    for (const int64_t pid : findPeonyPids())
+        ::kill(static_cast<pid_t>(pid), SIGTERM);
+    if (!waitForPeonyExit(3000)) {
+        for (const int64_t pid : findPeonyPids())
+            ::kill(static_cast<pid_t>(pid), SIGKILL);
+        lwe::sleepMs(300);
+    }
+}
+
+// peony keeps a single-instance lock in /tmp; a stale one makes the instance
+// we are about to start believe it should hand over to a peony that is gone.
+void clearSingleInstanceLocks() {
+    std::error_code iteratorEc;
+    std::error_code removeEc;
+    for (const fs::directory_entry& entry : fs::directory_iterator("/tmp", iteratorEc)) {
+        if (entry.path().filename().string().rfind("qtsingleapp-peonyq", 0) == 0)
+            fs::remove(entry.path(), removeEc);
+    }
 }
 
 // accountsservice on the system bus, addressed directly — the former
@@ -294,7 +349,22 @@ bool setup(lwe::Error* error) {
 
     // remember the pre-change wallpaper too: if the accountsservice write
     // fails, peony still loads the OLD path and the shim must match it
-    const std::string previousBackground = getAccountBackground();
+    std::string previousBackground = getAccountBackground();
+
+    // Record it — teardown() has no other way to know what to put back, and
+    // getting that wrong leaves a magenta desktop and no way home.
+    //
+    // Recording is also where a re-run gets careful: if setup has run before
+    // (no record file, but a peony is already running injected) then the
+    // accountsservice value is our own marker, not the user's wallpaper. The
+    // list that peony was launched with still starts with the real one.
+    std::error_code recordEc;
+    if (!fs::exists(previousBackgroundPath(), recordEc)) {
+        const std::string fromRunning = firstWallpaperIn(peonyEnvValue("PEONY_ALPHA_WALLPAPER"));
+        if (!fromRunning.empty())
+            previousBackground = fromRunning;
+        lwe::writeFileAtomic(previousBackgroundPath(), previousBackground + "\n");
+    }
 
     setAccountBackground(marker);
     const std::string normalized = getAccountBackground();
@@ -308,22 +378,11 @@ bool setup(lwe::Error* error) {
 
     // ---- 2. stop peony and wait for a real exit; a lingering process holds
     // the single-instance lock and our injected instance would bail out.
-    for (const int64_t pid : findPeonyPids())
-        ::kill(static_cast<pid_t>(pid), SIGTERM);
-    if (!waitForPeonyExit(3000)) {
-        for (const int64_t pid : findPeonyPids())
-            ::kill(static_cast<pid_t>(pid), SIGKILL);
-        lwe::sleepMs(300);
-    }
+    stopPeonyProcesses();
 
     // ---- 3. clear stale single-instance locks and relaunch with the shim
     // preloaded (systemd-run keeps it injected across crashes).
-    std::error_code iterEc;
-    for (const fs::directory_entry& entry : fs::directory_iterator("/tmp", iterEc)) {
-        const std::string lock = entry.path().filename().string();
-        if (lock.rfind("qtsingleapp-peonyq", 0) == 0)
-            fs::remove(entry.path(), fsEc);
-    }
+    clearSingleInstanceLocks();
 
     // launch through the typed systemd layer: transient unit with
     // Restart=on-failure — if peony dies, systemd restarts it WITH the
@@ -369,6 +428,79 @@ bool setup(lwe::Error* error) {
         error->kind = lwe::Error::Unknown;
         error->message = "peony relaunched but the shim did not map (list: " + wallpaperList +
                          "; log: " + logPath + ")";
+    }
+    return false;
+}
+
+bool teardown(lwe::Error* error) {
+    // ---- 1. which wallpaper to put back. The recorded copy is authoritative;
+    // without it (an install from before it existed) the list the running
+    // peony was launched with still names it first.
+    std::string previous;
+    if (std::string contents; readSmallFile(previousBackgroundPath(), contents)) {
+        previous = contents;
+        while (!previous.empty() && (previous.back() == '\n' || previous.back() == '\r'))
+            previous.pop_back();
+    }
+    if (previous.empty())
+        previous = firstWallpaperIn(peonyEnvValue("PEONY_ALPHA_WALLPAPER"));
+
+    // ---- 2. is the desktop actually injected? A peony that is already clean
+    // is left running: restarting it would only cost the user their icons.
+    const int64_t existingPid = findPeonyPid();
+    const bool injected = existingPid != 0 && shimMapped(existingPid);
+
+    if (injected) {
+        SystemdLayer::SystemdUnit peonyUnit("linux-wallpaperengine-peony");
+        // stop the supervisor first: killing peony while Restart=on-failure
+        // is watching would only bring it back
+        peonyUnit.stop();
+        peonyUnit.resetFailed();
+        stopPeonyProcesses();
+        clearSingleInstanceLocks();
+    }
+
+    // ---- 3. hand the desktop its own wallpaper back
+    if (!previous.empty()) {
+        setAccountBackground(previous);
+        runTool("gsettings", { "set", "org.mate.background", "picture-filename", previous });
+    }
+
+    // leave nothing of ours behind: the record, the shim's log and the marker
+    // are all consumables of an integration that no longer exists
+    std::error_code removeEc;
+    fs::remove(previousBackgroundPath(), removeEc);
+    fs::remove(dataDir() + "/peony-shim.log", removeEc);
+    fs::remove(markerPath(), removeEc);
+
+    // ---- 4. relaunch peony with nothing injected — an ordinary detached
+    // process, so once this returns no unit of ours is supervising anything
+    if (injected || existingPid == 0) {
+        if (!lwe::spawnDetached({ "/usr/bin/peony-qt-desktop", "-w", "-d" })) {
+            if (error != nullptr) {
+                error->kind = lwe::Error::FileError;
+                error->message = "cannot start /usr/bin/peony-qt-desktop; start it again from the "
+                                 "session menu to get the desktop icons back";
+            }
+            return false;
+        }
+    }
+
+    // ---- 5. verify: alive, and genuinely without the shim
+    for (int waited = 0; waited < 10000; waited += 300) {
+        lwe::sleepMs(300);
+        const int64_t pid = findPeonyPid();
+        if (pid == 0)
+            continue;
+        if (!shimMapped(pid)) {
+            if (error != nullptr)
+                *error = {};
+            return true;
+        }
+    }
+    if (error != nullptr) {
+        error->kind = lwe::Error::Unknown;
+        error->message = "peony is running but the shim is still mapped into it";
     }
     return false;
 }

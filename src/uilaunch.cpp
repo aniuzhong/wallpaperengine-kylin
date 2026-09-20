@@ -68,56 +68,6 @@ std::string runForOutput(const std::vector<std::string>& argv) {
     return output;
 }
 
-bool executableExists(const std::string& program) {
-    if (program.empty())
-        return false;
-    if (program.find('/') != std::string::npos)
-        return ::access(program.c_str(), X_OK) == 0;
-
-    const std::string path = lwe::envOr("PATH", "/usr/local/bin:/usr/bin:/bin");
-    size_t start = 0;
-    while (start <= path.size()) {
-        const size_t end = path.find(':', start);
-        const size_t stop = end == std::string::npos ? path.size() : end;
-        if (stop > start && ::access((path.substr(start, stop - start) + "/" + program).c_str(), X_OK) == 0)
-            return true;
-        if (end == std::string::npos)
-            break;
-        start = end + 1;
-    }
-    return false;
-}
-
-// Start |argv| and walk away. The browser outlives this process, so the
-// intermediate child exits immediately and the real process is orphaned onto
-// init — otherwise the server, which may stay up for hours, would accumulate
-// a zombie the moment the user closes the browser.
-bool spawnDetached(const std::vector<std::string>& argv) {
-    if (argv.empty() || !executableExists(argv.front()))
-        return false;
-
-    const pid_t pid = fork();
-    if (pid < 0)
-        return false;
-    if (pid == 0) {
-        setsid();
-        const pid_t grandchild = fork();
-        if (grandchild != 0)
-            _exit(grandchild < 0 ? 1 : 0);
-
-        std::vector<char*> args;
-        for (const std::string& arg : argv)
-            args.push_back(const_cast<char*>(arg.c_str()));
-        args.push_back(nullptr);
-        execvp(argv.front().c_str(), args.data());
-        _exit(127); // exec failed
-    }
-
-    int status = 0;
-    waitpid(pid, &status, 0);
-    return WIFEXITED(status) && WEXITSTATUS(status) == 0;
-}
-
 // Remove the %-field codes from one argument. "%%" is a literal percent;
 // the field codes themselves expand to something the caller already knows
 // (argv[0] is the program, the URL is appended separately).
@@ -266,12 +216,12 @@ std::string defaultBrowserExec() {
 
 bool openBrowser(const std::string& url, std::string* error) {
     const std::string exec = defaultBrowserExec();
-    if (!exec.empty() && spawnDetached(launchFor(exec, url).argv))
+    if (!exec.empty() && lwe::spawnDetached(launchFor(exec, url).argv))
         return true;
 
     // the desktop's own opener: whatever association we failed to resolve,
     // this is the thing that would have resolved it
-    if (spawnDetached({ "xdg-open", url }))
+    if (lwe::spawnDetached({ "xdg-open", url }))
         return true;
 
     if (error != nullptr)

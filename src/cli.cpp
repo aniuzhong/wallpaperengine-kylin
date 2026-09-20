@@ -45,6 +45,7 @@ void printUsage () {
         "  pause / resume              alias of stop / start\n"
         "  properties <id>             list the engine properties of a wallpaper\n"
         "  setup-integration           configure peony injection for a visible desktop\n"
+        "  remove-integration          undo it: restore the wallpaper, unload the shim\n"
         "  doctor                      dump diagnostics for bug reports\n"
         "  selftest                    config load/save self-test\n"
         "  ui [--port N] [--no-open]   serve the browser frontend on 127.0.0.1\n",
@@ -191,6 +192,15 @@ int cmdSetupIntegration (bool json) {
     return EXIT_OK;
 }
 
+int cmdRemoveIntegration (bool json) {
+    lwe::Error error;
+    if (!Integration::teardown (&error))
+        return fail (json, "remove-integration failed", error);
+    std::printf ("integration removed: the previous wallpaper is back, "
+                 "peony is running without the shim\n");
+    return EXIT_OK;
+}
+
 int cmdDoctor () {
     lwe::Error configError;
     const Config config = Config::load (&configError);
@@ -271,6 +281,8 @@ int runCli (const std::vector<std::string>& args) {
         return rest.empty () ? EXIT_USAGE : cmdProperties (rest.front ());
     if (command == "setup-integration")
         return cmdSetupIntegration (json);
+    if (command == "remove-integration" || command == "teardown-integration")
+        return cmdRemoveIntegration (json);
     if (command == "doctor")
         return cmdDoctor ();
     if (command == "selftest" || command == "--selftest")

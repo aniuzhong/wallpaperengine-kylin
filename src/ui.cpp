@@ -474,6 +474,18 @@ void registerRoutes(httplib::Server& server, const std::shared_ptr<State>& state
         sendJson(res, { { "configured", true } });
     });
 
+    // The way back out of the injection. Without it the only escape was to
+    // work out by hand that peony runs under a transient unit with the shim
+    // preloaded — and that the desktop's own wallpaper had been replaced.
+    server.Post("/api/integration/remove", [](const httplib::Request&, httplib::Response& res) {
+        lwe::Error error;
+        if (!Integration::teardown(&error)) {
+            sendError(res, error);
+            return;
+        }
+        sendJson(res, { { "configured", false } });
+    });
+
     // ---- previews
 
     server.Get(R"(/api/preview/([^/]+))", [](const httplib::Request& req, httplib::Response& res) {

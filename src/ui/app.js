@@ -316,6 +316,16 @@ function renderIntegration() {
     line.textContent = '未检测到 peony 桌面进程';
   }
   box.appendChild(line);
+
+  // removing has to be as easy to find as setting up: the injected peony
+  // runs under a transient unit the user has no reason to know about
+  if (status.configured) {
+    const remove = document.createElement('button');
+    remove.className = 'btn block';
+    remove.textContent = '移除桌面集成';
+    remove.addEventListener('click', removeIntegration);
+    box.appendChild(remove);
+  }
 }
 
 function renderFooter() {
@@ -407,6 +417,17 @@ async function setupIntegration() {
     toast('桌面集成完成', 'ok');
   } catch (error) {
     toast('桌面集成失败：' + error.message, 'error');
+  }
+  await refreshIntegration();
+}
+
+async function removeIntegration() {
+  toast('正在恢复桌面…');
+  try {
+    await api('/api/integration/remove', { method: 'POST' });
+    toast('已移除，桌面壁纸已还原', 'ok');
+  } catch (error) {
+    toast('移除失败：' + error.message, 'error');
   }
   await refreshIntegration();
 }

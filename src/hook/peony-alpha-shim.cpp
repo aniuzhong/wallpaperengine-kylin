@@ -71,6 +71,24 @@ static bool shim_enabled() {
     return p && *p;
 }
 
+// ---- 0. do not follow the injection into children
+//
+// LD_PRELOAD is inherited by every process peony spawns, but this library
+// only loads into a process that already has Qt: the Qt symbols it uses
+// resolve from the host. A non-Qt child — and GIO opens files through
+// /bin/sh, so that is most of them — dies at load time with
+//    symbol lookup error: libpeony-alpha-shim.so: undefined symbol: qt_version_tag
+// before it can run a single instruction. The visible symptom was a desktop
+// where only the icons peony handles itself (computer, trash, home) still
+// opened, while every real file did nothing at all.
+//
+// The library is already mapped by the time this constructor runs, so
+// dropping the variable costs the desktop nothing and spares every child.
+__attribute__((constructor)) static void shim_drop_preload_for_children() {
+    unsetenv("LD_PRELOAD");
+    shim_log("[shim] dropped LD_PRELOAD so children load clean\n");
+}
+
 // ---- 1. QPixmap constructor hook
 //
 // The peony binary references:

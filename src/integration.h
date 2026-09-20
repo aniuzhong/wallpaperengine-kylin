@@ -46,4 +46,18 @@ std::string locateShim ();
 // FileError, a launch that did not take reports Unknown.
 bool setup(lwe::Error* error = nullptr);
 
+// The exact inverse, and the only supported way out of the injection:
+//   1. work out which wallpaper the desktop had before setup — from the copy
+//      setup() records, or from the environment of the peony that is still
+//      running when that copy predates the installation
+//   2. stop the transient unit that supervises the injected peony and wait
+//      for the process to really exit
+//   3. point accountsservice and gsettings back at that wallpaper, and drop
+//      the files setup() wrote
+//   4. relaunch peony as an ordinary detached process, with nothing injected
+//   5. verify: alive, shim gone
+// A peony that is already running without the shim is left alone; only the
+// wallpaper pointer is put back.
+bool teardown(lwe::Error* error = nullptr);
+
 } // namespace Integration

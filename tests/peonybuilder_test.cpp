@@ -59,6 +59,14 @@ private slots:
                   std::string ("/a/b.png:/a/b.png.bak"));
     }
 
+    void firstWallpaperIsTheOneTheDesktopHad () {
+        // the order buildWallpaperList produces: previous, normalized, marker
+        QCOMPARE (Integration::firstWallpaperIn ("/old/wall.png:/var/lib/AccountsService/backgrounds/x.png:/data/m.png"),
+                  std::string ("/old/wall.png"));
+        QCOMPARE (Integration::firstWallpaperIn ("/only.png"), std::string ("/only.png"));
+        QCOMPARE (Integration::firstWallpaperIn (""), std::string ());
+    }
+
     void shimEnvironmentCarriesTheThreeVariables () {
         const std::map<std::string, std::string> env =
             Integration::buildShimEnvironment ("/opt/lwe/lib/libpeony-alpha-shim.so", "/a.png:/b.png", "/tmp/shim.log");

@@ -29,6 +29,11 @@ std::string buildWallpaperList(const std::string& marker, const std::string& nor
     return joined;
 }
 
+std::string firstWallpaperIn(const std::string& list) {
+    const size_t colon = list.find(':');
+    return colon == std::string::npos ? list : list.substr(0, colon);
+}
+
 std::map<std::string, std::string> buildShimEnvironment(const std::string& shimPath,
                                                         const std::string& wallpaperList,
                                                         const std::string& logPath) {
