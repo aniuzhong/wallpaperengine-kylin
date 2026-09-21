@@ -5,6 +5,7 @@
 // The xcb mode requires an X server and is skipped without DISPLAY.
 #include <QImage>
 #include <QColor>
+#include <QDir>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QtTest>
@@ -27,11 +28,17 @@ private slots:
     }
 
     void ctorHook_nullifiesWallpaper() {
+        // logging has no override switch: the probe is isolated from the
+        // developer's own data dir through the standard variable, and the
+        // always-on log must appear under it
+        const QString xdg = QDir::temp().filePath("shim-hook-xdg");
+        QVERIFY(QDir().mkpath(xdg + "/wallpaper-engine/peony"));
+
         QProcess probe;
         QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
         env.insert("LD_PRELOAD", kShimPath);
         env.insert("PEONY_ALPHA_WALLPAPER", kMarkerPath);
-        env.insert("PEONY_ALPHA_LOG", "/tmp/shim-hook-ctor.log");
+        env.insert("XDG_DATA_HOME", xdg);
         env.insert("QT_QPA_PLATFORM", "offscreen");
         probe.setProcessEnvironment(env);
         probe.start(kProbePath, { "ctor", kMarkerPath });
@@ -39,6 +46,7 @@ private slots:
         QVERIFY(probe.waitForFinished(30000));
         const QString out = QString::fromUtf8(probe.readAllStandardOutput());
         QCOMPARE(out.trimmed(), QString("RESULT transparent=1"));
+        QVERIFY(QFile::exists(xdg + "/wallpaper-engine/peony/peony-alpha.log"));
     }
 
     void xcbHook_rewritesDesktopType() {
@@ -48,6 +56,7 @@ private slots:
         QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
         env.insert("LD_PRELOAD", kShimPath);
         env.insert("PEONY_ALPHA_WALLPAPER", kMarkerPath);
+        env.insert("XDG_DATA_HOME", QDir::temp().filePath("shim-hook-xdg"));
         probe.setProcessEnvironment(env);
         probe.start(kProbePath, { "xcbtype" });
         QVERIFY(probe.waitForStarted(5000));

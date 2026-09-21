@@ -40,10 +40,12 @@ std::string buildWallpaperList(const std::string& marker, const std::string& nor
 // was launched with is then the only place the path survives.
 std::string firstWallpaperIn(const std::string& list);
 
-// The environment the injected peony is launched with. The shim reads all
-// three at load time; without PEONY_ALPHA_WALLPAPER it stays inert.
+// The environment the injected peony is launched with: the interposer and
+// the wallpaper list. The log destination is deliberately not part of the
+// contract — shim logging is always on and lands in the per-user data dir
+// (see src/shim/peony-alpha.cpp); without PEONY_ALPHA_WALLPAPER the shim
+// stays inert.
 std::map<std::string, std::string> buildShimEnvironment(const std::string& shimPath,
-                                                        const std::string& wallpaperList,
-                                                        const std::string& logPath);
+                                                        const std::string& wallpaperList);
 
 } // namespace Peony

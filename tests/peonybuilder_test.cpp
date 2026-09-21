@@ -67,14 +67,15 @@ private slots:
         QCOMPARE(Peony::firstWallpaperIn(""), std::string());
     }
 
-    void shimEnvironmentCarriesTheThreeVariables() {
+    void shimEnvironmentCarriesTheContractVariables() {
+        // the log destination is not in the environment: shim logging is
+        // always on and resolves its own per-user destination
         const std::map<std::string, std::string> env =
-            Peony::buildShimEnvironment("/opt/wallpaper-engine/lib/libpeony-alpha.so", "/a.png:/b.png", "/tmp/shim.log");
+            Peony::buildShimEnvironment("/opt/wallpaper-engine/lib/libpeony-alpha.so", "/a.png:/b.png");
 
-        QCOMPARE(env.size(), size_t(3));
+        QCOMPARE(env.size(), size_t(2));
         QCOMPARE(env.at("LD_PRELOAD"), std::string("/opt/wallpaper-engine/lib/libpeony-alpha.so"));
         QCOMPARE(env.at("PEONY_ALPHA_WALLPAPER"), std::string("/a.png:/b.png"));
-        QCOMPARE(env.at("PEONY_ALPHA_LOG"), std::string("/tmp/shim.log"));
     }
 };
 

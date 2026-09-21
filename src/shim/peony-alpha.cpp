@@ -60,6 +60,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 #include <fcntl.h>
 #include <sys/types.h>
@@ -68,8 +69,13 @@
 
 // ---- logging ---------------------------------------------------------------
 //
-// A debugging surface for the injection itself, designed so that it can
-// never harm the process being interposed:
+// A debugging surface for the injection itself, always on: every process
+// the shim maps into logs, unconditionally, to one per-user destination.
+// There is no override switch — the volume is intrinsically tiny (a
+// handful of lines per peony generation), so plain append-to-file needs no
+// rotation, no syslog machinery and no configuration; tests and manual
+// experiments isolate themselves with XDG_DATA_HOME. The design keeps
+// logging unable to harm the process being interposed:
 //
 //   - one file descriptor for the process lifetime, opened O_APPEND so all
 //     generations append to one file (systemd restarts peony with
@@ -82,18 +88,39 @@
 //   - one write() per line, sized to stay within the pipe-buffer budget, so
 //     concurrent processes cannot interleave mid-line;
 //   - write failures are swallowed: losing a debug line beats disturbing
-//     the host, and an unreadable path disables logging entirely.
+//     the host, and an unresolvable or unwritable destination disables
+//     logging entirely.
 
 namespace {
 
 constexpr size_t kLogLineMax = 512;
 
+// The one log destination: the peony backend's data dir, the same shape
+// integration/peony.cpp computes (README "Names" — the file belongs to the
+// <host>-<effect> pair). Environment only, no filesystem work: when the
+// directory does not exist (a shim mapped outside a setup pass) open()
+// fails and logging stays off rather than the shim growing
+// directory-management behavior.
+std::string log_path() {
+    const char* dataHome = getenv("XDG_DATA_HOME");
+    std::string base;
+    if (dataHome != nullptr && *dataHome != '\0') {
+        base = dataHome;
+    } else {
+        const char* home = getenv("HOME");
+        if (home == nullptr || *home == '\0')
+            return {};
+        base = std::string(home) + "/.local/share";
+    }
+    return base + "/wallpaper-engine/peony/peony-alpha.log";
+}
+
 int log_fd() {
     static const int fd = [] {
-        const char* path = getenv("PEONY_ALPHA_LOG");
-        if (path == nullptr || *path == '\0')
+        const std::string path = log_path();
+        if (path.empty())
             return -1;
-        return open(path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
+        return open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
     }();
     return fd;
 }

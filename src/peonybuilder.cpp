@@ -35,12 +35,10 @@ std::string firstWallpaperIn(const std::string& list) {
 }
 
 std::map<std::string, std::string> buildShimEnvironment(const std::string& shimPath,
-                                                        const std::string& wallpaperList,
-                                                        const std::string& logPath) {
+                                                        const std::string& wallpaperList) {
     return {
         { "LD_PRELOAD", shimPath },
         { "PEONY_ALPHA_WALLPAPER", wallpaperList },
-        { "PEONY_ALPHA_LOG", logPath },
     };
 }
 

@@ -19,7 +19,7 @@ deploying it through the environment.
 | Product control plane | `wallpaper-engine` / `WALLPAPER_ENGINE_*` | binary, `~/.config/wallpaper-engine/`, `wallpaper-engine.service`, `WALLPAPER_ENGINE_UNIT` |
 | App id (reverse-DNS, D-Bus-safe) | `io.github.aniuzhong.WallpaperEngine` | desktop file, bus name, icons, portal scopes |
 | Integration backend (host process) | lowercase host name | `peony` |
-| Interposer library + its env contract | `lib<host>-<effect>.so`, `<HOST>_<EFFECT>_<ROLE>` | `libpeony-alpha.so`, `PEONY_ALPHA_WALLPAPER`, `PEONY_ALPHA_LOG` |
+| Interposer library + its env contract | `lib<host>-<effect>.so`, `<HOST>_<EFFECT>_WALLPAPER` | `libpeony-alpha.so`, `PEONY_ALPHA_WALLPAPER`; the shim log is always on, at `~/.local/share/wallpaper-engine/<host>/` (follows `XDG_DATA_HOME`) |
 | Transient unit supervising an injected shell | `wallpaper-engine-<host>` | `wallpaper-engine-peony` |
 
 The engine keeps its upstream name on disk: the `linux-wallpaperengine`

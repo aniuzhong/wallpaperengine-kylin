@@ -416,7 +416,7 @@ public:
         }
         const std::string logPath = dataDir() + "/peony-alpha.log";
         SystemdLayer::Error unitError;
-        const std::map<std::string, std::string> peonyEnv = Peony::buildShimEnvironment(shimPath, wallpaperList, logPath);
+        const std::map<std::string, std::string> peonyEnv = Peony::buildShimEnvironment(shimPath, wallpaperList);
         if (!peonyUnit.startTransient({"/usr/bin/peony-qt-desktop", "-w", "-d"}, peonyEnv, {}, &unitError)) {
             // the typed D-Bus error survives to the caller: kind and error name
             if (error != nullptr)
