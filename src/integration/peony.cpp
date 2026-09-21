@@ -1,13 +1,15 @@
 #include "backend.h"
+#include "marker.h"
 
 #include "../peonybuilder.h"
 #include "../posix.h"
 #include "../systemdunit.h"
 
-#include <png.h>
+#include <xcb/xcb.h>
+#include <xcb/randr.h>
+
 #include <systemd/sd-bus.h>
 
-#include <csetjmp>
 #include <csignal>
 #include <cstdarg>
 #include <cstdio>
@@ -34,7 +36,55 @@ std::string dataDir() {
 }
 
 std::string markerPath() {
-    return dataDir() + "/marker.png";
+    return dataDir() + "/marker.bmp";
+}
+
+// The size the marker is rendered at: the primary output's current mode,
+// so the drawn text comes out at native pixel density. Falls back to the
+// root geometry, then to 1080p when nothing answers (headless runs).
+std::pair<int, int> markerSize() {
+    std::pair<int, int> size {1920, 1080};
+    xcb_connection_t* c = xcb_connect(nullptr, nullptr);
+    if (xcb_connection_has_error(c) != 0) {
+        xcb_disconnect(c);
+        return size;
+    }
+    const xcb_screen_t* screen = xcb_setup_roots_iterator(xcb_get_setup(c)).data;
+    size = {static_cast<int>(screen->width_in_pixels), static_cast<int>(screen->height_in_pixels)};
+
+    xcb_randr_get_output_primary_reply_t* primary =
+        xcb_randr_get_output_primary_reply(c, xcb_randr_get_output_primary(c, screen->root), nullptr);
+    if (primary != nullptr) {
+        xcb_randr_get_output_info_reply_t* output = xcb_randr_get_output_info_reply(
+            c, xcb_randr_get_output_info(c, primary->output, XCB_CURRENT_TIME), nullptr);
+        if (output != nullptr && output->crtc != XCB_NONE) {
+            xcb_randr_get_crtc_info_reply_t* crtc =
+                xcb_randr_get_crtc_info_reply(c, xcb_randr_get_crtc_info(c, output->crtc, XCB_CURRENT_TIME), nullptr);
+            if (crtc != nullptr && crtc->mode != XCB_NONE) {
+                xcb_randr_get_screen_resources_current_reply_t* resources =
+                    xcb_randr_get_screen_resources_current_reply(
+                        c, xcb_randr_get_screen_resources_current(c, screen->root), nullptr);
+                if (resources != nullptr) {
+                    xcb_randr_mode_info_iterator_t it =
+                        xcb_randr_get_screen_resources_current_modes_iterator(resources);
+                    for (; it.rem; xcb_randr_mode_info_next(&it)) {
+                        if (it.data->id == crtc->mode) {
+                            size = {static_cast<int>(it.data->width), static_cast<int>(it.data->height)};
+                            break;
+                        }
+                    }
+                    free(resources);
+                }
+            }
+            if (crtc != nullptr)
+                free(crtc);
+        }
+        if (output != nullptr)
+            free(output);
+        free(primary);
+    }
+    xcb_disconnect(c);
+    return size;
 }
 
 // What the desktop's wallpaper was before setup pointed it at the marker.
@@ -229,57 +279,6 @@ void setAccountBackground(const std::string& marker) {
     sd_bus_flush_close_unref(bus);
 }
 
-// Write the marker wallpaper: 64x64 solid magenta RGB. The pixels are
-// irrelevant to the design (the shim nullifies the image at load time);
-// magenta only makes an unshimmed desktop obvious instead of silently dark.
-// libpng is guaranteed on the target — freetype itself links it.
-bool writeMarkerPng(const std::string& path) {
-    constexpr int kSize = 64;
-
-    FILE* file = fopen(path.c_str(), "wb");
-    if (file == nullptr)
-        return false;
-
-    png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
-    if (png == nullptr) {
-        fclose(file);
-        return false;
-    }
-    png_infop info = png_create_info_struct(png);
-    if (info == nullptr) {
-        png_destroy_write_struct(&png, nullptr);
-        fclose(file);
-        return false;
-    }
-
-    // libpng reports errors through longjmp back into this point
-    if (setjmp(png_jmpbuf(png)) != 0) {
-        png_destroy_write_struct(&png, &info);
-        fclose(file);
-        return false;
-    }
-
-    png_init_io(png, file);
-    png_set_IHDR(png, info, kSize, kSize, 8, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT,
-                 PNG_FILTER_TYPE_DEFAULT);
-    png_write_info(png, info);
-
-    png_byte row[kSize * 3];
-    for (int x = 0; x < kSize; ++x) {
-        row[x * 3 + 0] = 0xff; // magenta: full red and blue
-        row[x * 3 + 1] = 0x00;
-        row[x * 3 + 2] = 0xff;
-    }
-    for (int y = 0; y < kSize; ++y)
-        png_write_row(png, row);
-
-    png_write_end(png, info);
-    png_destroy_write_struct(&png, &info);
-    const bool ok = ferror(file) == 0;
-    fclose(file);
-    return ok;
-}
-
 // fire-and-forget tool run; blocks until exit, result ignored — the shape
 // QProcess::execute() gave the gsettings call
 void runTool(const std::string& program, const std::vector<std::string>& args) {
@@ -340,15 +339,16 @@ public:
 
     bool setup(wallpaper_engine::Error* error) override {
         // ---- 1. marker wallpaper; accountsservice and gsettings point at it.
-        // The shim nullifies the pixmap at load time, so the color is
-        // irrelevant (magenta makes an unshimmed desktop obvious instead of
-        // silently dark).
+        // The shim nullifies the pixmap at load time, so a working
+        // integration never shows it (if the injection is ever lost, the
+        // image on screen carries the recovery instructions).
         std::error_code fsEc;
         fs::create_directories(dataDir(), fsEc);
         fs::remove(dataDir() + "/peony-alpha.log", fsEc); // fresh log per setup
 
         const std::string marker = markerPath();
-        if (!writeMarkerPng(marker)) {
+        const auto [markerWidth, markerHeight] = markerSize();
+        if (!Marker::writeTo(marker, markerWidth, markerHeight)) {
             if (error != nullptr) {
                 error->kind = wallpaper_engine::Error::FileError;
                 error->message = "cannot write marker wallpaper to " + marker;
@@ -386,23 +386,31 @@ public:
         // anything under the accountsservice store anyway.
         const std::string wallpaperList = Peony::buildWallpaperList(marker, normalized, previousBackground);
 
-        // ---- 2. stop peony and wait for a real exit; a lingering process
+        // ---- 2. stop the supervising unit before touching peony: with
+        // Restart=on-failure watching, killing the process would race the
+        // auto-restart job and the StartTransientUnit below would hit
+        // "already exists". The manager's stop is asynchronous, so the
+        // switch-over waits for the unit to actually leave active state.
+        SystemdLayer::SystemdUnit peonyUnit("wallpaper-engine-peony");
+        peonyUnit.stop();
+        for (int waited = 0; waited < 5000; waited += 200) {
+            const std::string state = peonyUnit.activeState();
+            if (state != "active" && state != "activating" && state != "deactivating")
+                break;
+            wallpaper_engine::sleepMs(200);
+        }
+        // a stale failed unit with the same name blocks re-creation — clear
+        // it once nothing is queued; a no-op when nothing is loaded
+        peonyUnit.resetFailed();
+
+        // ---- 3. stop peony and wait for a real exit; a lingering process
         // holds the single-instance lock and our injected instance would bail
         // out.
         stopPeonyProcesses();
 
-        // ---- 3. clear stale single-instance locks and relaunch with the
+        // ---- 4. clear stale single-instance locks and relaunch with the
         // shim preloaded (systemd-run keeps it injected across crashes).
         clearSingleInstanceLocks();
-
-        // launch through the typed systemd layer: transient unit with
-        // Restart=on-failure — if peony dies, systemd restarts it WITH the
-        // injection environment (structurally guaranteed self-healing)
-        SystemdLayer::SystemdUnit peonyUnit("wallpaper-engine-peony");
-        // a stale failed unit with the same name blocks re-creation — clear
-        // it first; both calls are no-ops when nothing is loaded
-        peonyUnit.stop();
-        peonyUnit.resetFailed();
 
         const std::string shimPath = locateShim();
         if (shimPath.empty()) {

@@ -37,9 +37,11 @@ Status detect();
 std::string locateShim();
 
 // Full integration pass:
-//   1. point accountsservice/gsettings at a marker wallpaper generated
-//      with libpng in the user data dir (the shim nullifies it at load
-//      time — the color is irrelevant)
+//   1. point accountsservice/gsettings at a marker wallpaper rendered at
+//      setup time into the user data dir — a programmatic "blue screen"
+//      at the primary output's resolution (the shim nullifies it at load
+//      time; if the injection is ever lost, the image on screen carries
+//      the recovery instructions)
 //   2. stop the shell, wait for exit (TERM, then KILL), clear the single-
 //      instance lock so our injected instance wins the race
 //   3. relaunch the shell via a transient systemd unit with LD_PRELOAD and

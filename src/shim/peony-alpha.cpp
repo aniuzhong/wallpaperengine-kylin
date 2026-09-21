@@ -102,10 +102,10 @@ constexpr size_t kLogLineMax = 512;
 // fails and logging stays off rather than the shim growing
 // directory-management behavior.
 std::string log_path() {
-    const char* dataHome = getenv("XDG_DATA_HOME");
+    const char* data_home = getenv("XDG_DATA_HOME");
     std::string base;
-    if (dataHome != nullptr && *dataHome != '\0') {
-        base = dataHome;
+    if (data_home != nullptr && *data_home != '\0') {
+        base = data_home;
     } else {
         const char* home = getenv("HOME");
         if (home == nullptr || *home == '\0')
@@ -116,7 +116,7 @@ std::string log_path() {
 }
 
 int log_fd() {
-    static const int fd = [] {
+    static const int fd = []() {
         const std::string path = log_path();
         if (path.empty())
             return -1;
@@ -221,21 +221,21 @@ using pixmap_ctor3_t = void (*)(QPixmap*, const QString&, const char*, Qt::Image
 // trip.
 static constexpr const char* kAccountsBackgroundDir = "/var/lib/AccountsService/backgrounds/";
 
-bool is_wallpaper_path(const QString& fileName) {
+bool is_wallpaper_path(const QString& file_name) {
     const char* list = getenv("PEONY_ALPHA_WALLPAPER");
     if (!list || !*list)
         return false;
-    if (fileName.isEmpty())
+    if (file_name.isEmpty())
         return false;
-    if (fileName.startsWith(kAccountsBackgroundDir))
+    if (file_name.startsWith(kAccountsBackgroundDir))
         return true;
-    QString base = QFileInfo(fileName).fileName();
+    QString base = QFileInfo(file_name).fileName();
     const char* start = list;
     for (const char* p = list;; p++) {
         if (*p == ':' || *p == '\0') {
             if (p > start) {
                 QString candidate = QString::fromLocal8Bit(start, static_cast<int>(p - start));
-                if (fileName == candidate || base == candidate)
+                if (file_name == candidate || base == candidate)
                     return true;
             }
             if (*p == '\0')
@@ -246,14 +246,14 @@ bool is_wallpaper_path(const QString& fileName) {
     return false;
 }
 
-void nullify_if_wallpaper(QPixmap* pm, const QString& fileName) {
-    if (!pm->isNull() && is_wallpaper_path(fileName)) {
+void nullify_if_wallpaper(QPixmap* pm, const QString& file_name) {
+    if (!pm->isNull() && is_wallpaper_path(file_name)) {
         // same-size fully transparent replacement; fill(transparent) yields
         // valid premultiplied alpha=0 pixels
         QPixmap transparent(pm->size());
         transparent.fill(Qt::transparent);
         *pm = transparent;
-        shim_log("[shim] nullified wallpaper pixmap: %s (%dx%d)\n", fileName.toUtf8().constData(),
+        shim_log("[shim] nullified wallpaper pixmap: %s (%dx%d)\n", file_name.toUtf8().constData(),
                  pm->size().width(), pm->size().height());
     }
 }
@@ -264,25 +264,25 @@ void nullify_if_wallpaper(QPixmap* pm, const QString& fileName) {
 // from the usual naming conventions.
 
 extern "C" __attribute__((visibility("default"))) void
-_ZN7QPixmapC1ERK7QStringPKc6QFlagsIN2Qt19ImageConversionFlagEE(QPixmap* pm, const QString& fileName,
+_ZN7QPixmapC1ERK7QStringPKc6QFlagsIN2Qt19ImageConversionFlagEE(QPixmap* pm, const QString& file_name,
                                                                const char* format, Qt::ImageConversionFlags flags) {
     static pixmap_ctor3_t real = nullptr;
     if (!real)
         real = reinterpret_cast<pixmap_ctor3_t>(
             dlsym(RTLD_NEXT, "_ZN7QPixmapC1ERK7QStringPKc6QFlagsIN2Qt19ImageConversionFlagEE"));
-    real(pm, fileName, format, flags);
-    nullify_if_wallpaper(pm, fileName);
+    real(pm, file_name, format, flags);
+    nullify_if_wallpaper(pm, file_name);
 }
 
 extern "C" __attribute__((visibility("default"))) void
-_ZN7QPixmapC2ERK7QStringPKc6QFlagsIN2Qt19ImageConversionFlagEE(QPixmap* pm, const QString& fileName,
+_ZN7QPixmapC2ERK7QStringPKc6QFlagsIN2Qt19ImageConversionFlagEE(QPixmap* pm, const QString& file_name,
                                                                const char* format, Qt::ImageConversionFlags flags) {
     static pixmap_ctor3_t real = nullptr;
     if (!real)
         real = reinterpret_cast<pixmap_ctor3_t>(
             dlsym(RTLD_NEXT, "_ZN7QPixmapC2ERK7QStringPKc6QFlagsIN2Qt19ImageConversionFlagEE"));
-    real(pm, fileName, format, flags);
-    nullify_if_wallpaper(pm, fileName);
+    real(pm, file_name, format, flags);
+    nullify_if_wallpaper(pm, file_name);
 }
 
 // ---- 2. property rewriting (xcb/Xlib) --------------------------------------
