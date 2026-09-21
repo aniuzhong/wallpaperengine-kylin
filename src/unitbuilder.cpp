@@ -2,11 +2,11 @@
 
 namespace SystemdLayer {
 
-std::string escapeExecArg (const std::string& arg) {
+std::string escapeExecArg(const std::string& arg) {
     // literal $ and % must be doubled: systemd substitutes $VAR/${VAR} and
     // %specifiers in ExecStart arguments
     std::string escaped;
-    escaped.reserve (arg.size ());
+    escaped.reserve(arg.size());
     for (const char c : arg) {
         if (c == '$' || c == '%') {
             escaped += c;
@@ -36,23 +36,23 @@ std::string escapeExecArg (const std::string& arg) {
     return quoted;
 }
 
-std::vector<std::string> parseExecArgs (const std::string& line) {
+std::vector<std::string> parseExecArgs(const std::string& line) {
     std::vector<std::string> args;
     std::string current;
     bool inQuotes = false;
     const auto flush = [&] {
-        if (!current.empty ()) {
-            args.push_back (current);
-            current.clear ();
+        if (!current.empty()) {
+            args.push_back(current);
+            current.clear();
         }
     };
 
-    for (size_t i = 0; i < line.size (); i++) {
+    for (size_t i = 0; i < line.size(); i++) {
         const char c = line[i];
         if (inQuotes) {
             // escapeExecArg only emits \\ and \" inside quotes; any other
             // backslash sequence stays literal
-            if (c == '\\' && i + 1 < line.size () && (line[i + 1] == '"' || line[i + 1] == '\\')) {
+            if (c == '\\' && i + 1 < line.size() && (line[i + 1] == '"' || line[i + 1] == '\\')) {
                 current += line[i + 1];
                 i++;
             } else if (c == '"') {
@@ -63,20 +63,20 @@ std::vector<std::string> parseExecArgs (const std::string& line) {
         } else if (c == '"') {
             inQuotes = true;
         } else if (c == ' ') {
-            flush ();
+            flush();
         } else {
             current += c;
         }
     }
-    flush ();
+    flush();
 
     // undo the doubling the same way systemd does before exec, so callers
     // see the argv the engine will actually run with
     std::string doubled;
     for (std::string& arg : args) {
         doubled.clear();
-        doubled.reserve(arg.size ());
-        for (size_t i = 0; i < arg.size (); i++) {
+        doubled.reserve(arg.size());
+        for (size_t i = 0; i < arg.size(); i++) {
             doubled += arg[i];
             if ((arg[i] == '$' || arg[i] == '%') && i + 1 < arg.size() && arg[i + 1] == arg[i])
                 i++; // skip the second half of $$ / %%

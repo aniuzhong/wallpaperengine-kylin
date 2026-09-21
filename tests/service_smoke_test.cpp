@@ -12,39 +12,39 @@
 #include <string>
 #include <vector>
 
-int main () {
+int main() {
     // pure systemd-layer logic
-    if (SystemdLayer::escapeExecArg ("a b") != "\"a b\"") {
-        std::printf ("smoke: escapeExecArg failed\n");
+    if (SystemdLayer::escapeExecArg("a b") != "\"a b\"") {
+        std::printf("smoke: escapeExecArg failed\n");
         return 1;
     }
     const SystemdLayer::ExecCommand command =
-        SystemdLayer::toExecCommand (std::vector<std::string> { "/bin/tool", "x" });
-    if (command.program != "/bin/tool" || command.args.size () != 2) {
-        std::printf ("smoke: toExecCommand failed\n");
+        SystemdLayer::toExecCommand(std::vector<std::string> { "/bin/tool", "x" });
+    if (command.program != "/bin/tool" || command.args.size() != 2) {
+        std::printf("smoke: toExecCommand failed\n");
         return 1;
     }
 
     // config -> argv mapping off the defaults (empty screens: no screen flags)
     const Config config;
-    const std::vector<std::string> argv = buildArgv (config);
-    if (argv.empty () || argv.front () != config.enginePath) {
-        std::printf ("smoke: buildArgv failed\n");
+    const std::vector<std::string> argv = buildArgv(config);
+    if (argv.empty() || argv.front() != config.enginePath) {
+        std::printf("smoke: buildArgv failed\n");
         return 1;
     }
 
     // library scan on a nonexistent root degrades to an empty result
-    if (!scanLibrary ("/lwe-smoke-does-not-exist").empty ()) {
-        std::printf ("smoke: scanLibrary failed\n");
+    if (!scanLibrary("/wallpaper-engine-smoke-does-not-exist").empty()) {
+        std::printf("smoke: scanLibrary failed\n");
         return 1;
     }
 
     // CLI usage path: exercises the command table with no side effects
-    if (runCli ({}) != 2) {
-        std::printf ("smoke: runCli usage exit failed\n");
+    if (runCli({}) != 2) {
+        std::printf("smoke: runCli usage exit failed\n");
         return 1;
     }
 
-    std::printf ("service smoke: ok\n");
+    std::printf("service smoke: ok\n");
     return 0;
 }

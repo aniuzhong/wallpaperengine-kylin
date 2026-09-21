@@ -76,21 +76,21 @@ COPY patches/ /int/patches/
 # Engine installs into the payload prefix and is merged into the deb tree
 # below; the controller and shim install straight into it.
 RUN cmake -S /int -B /build/integration -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=/deb/opt/linux-wallpaperengine \
+        -DCMAKE_INSTALL_PREFIX=/deb/opt/wallpaper-engine \
         -DBUILD_ENGINE=ON \
         -DBUILD_TESTING=OFF \
  && cmake --build /build/integration -j"$(nproc)" \
  && cmake --install /build/integration \
- && mkdir -p /deb/opt/linux-wallpaperengine \
- && cp -a /build/integration/payload/. /deb/opt/linux-wallpaperengine/
+ && mkdir -p /deb/opt/wallpaper-engine \
+ && cp -a /build/integration/payload/. /deb/opt/wallpaper-engine/
 
 # Smoke check: artifacts exist and every dynamic library resolves in the
 # container (same userland as the target desktops)
 # NOTE: upstream installs a FLAT layout (PREFIX/linux-wallpaperengine, no bin/)
-RUN test -x /deb/opt/linux-wallpaperengine/linux-wallpaperengine \
- && test -x /deb/opt/linux-wallpaperengine/bin/wallpaper-engine \
- && test -f /deb/opt/linux-wallpaperengine/lib/libpeony-alpha-shim.so \
- && ! ldd /deb/opt/linux-wallpaperengine/linux-wallpaperengine | grep -q "not found"
+RUN test -x /deb/opt/wallpaper-engine/linux-wallpaperengine \
+ && test -x /deb/opt/wallpaper-engine/bin/wallpaper-engine \
+ && test -f /deb/opt/wallpaper-engine/lib/libpeony-alpha.so \
+ && ! ldd /deb/opt/wallpaper-engine/linux-wallpaperengine | grep -q "not found"
 
 # ----------------------------------------------------------------------- deb
 # Assemble the package from the payload tree plus the maintainer scripts.
@@ -103,7 +103,7 @@ COPY packaging/deb /tmp/deb-control
 # master next to it is the source these are derived from, not what gets
 # installed — a 700K pixmap for a taskbar entry helps nobody)
 COPY icon/wallpaper-engine-256.png /tmp/deb-control/wallpaper-engine.png
-RUN mkdir -p /deb/DEBIAN /deb/usr/share/doc/linux-wallpaperengine-kylin \
+RUN mkdir -p /deb/DEBIAN /deb/usr/share/doc/wallpaper-engine-kylin \
  && cp /tmp/deb-control/control /deb/DEBIAN/control \
  && sed -i "s/@VERSION@/${DEB_VERSION}/" /deb/DEBIAN/control \
  && for s in postinst prerm postrm preinst; do \
@@ -111,10 +111,10 @@ RUN mkdir -p /deb/DEBIAN /deb/usr/share/doc/linux-wallpaperengine-kylin \
             cp "/tmp/deb-control/$s" /deb/DEBIAN/$s; chmod 755 /deb/DEBIAN/$s; \
         fi; \
     done \
- && cp /tmp/deb-control/copyright /deb/usr/share/doc/linux-wallpaperengine-kylin/copyright \
+ && cp /tmp/deb-control/copyright /deb/usr/share/doc/wallpaper-engine-kylin/copyright \
  && mkdir -p /deb/usr/share/applications /deb/usr/share/pixmaps \
              /deb/usr/share/icons/hicolor/256x256/apps \
- && cp /tmp/deb-control/wallpaper-engine.desktop /deb/usr/share/applications/ \
+ && cp /tmp/deb-control/io.github.aniuzhong.WallpaperEngine.desktop /deb/usr/share/applications/ \
  && cp /tmp/deb-control/wallpaper-engine.png /deb/usr/share/pixmaps/wallpaper-engine.png \
  && cp /tmp/deb-control/wallpaper-engine.png /deb/usr/share/icons/hicolor/256x256/apps/wallpaper-engine.png \
  && echo "Installed-Size: $(du -sk --apparent-size /deb | cut -f1)" >> /deb/DEBIAN/control \
@@ -130,7 +130,7 @@ COPY tests/ /int/tests/
 # without a session bus. The shim hook suite additionally needs an X server
 # for its xcb probe, so it is excluded here.
 RUN cmake -S /int -B /build/test -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=/deb/opt/linux-wallpaperengine \
+        -DCMAKE_INSTALL_PREFIX=/deb/opt/wallpaper-engine \
         -DBUILD_TESTING=ON \
  && cmake --build /build/test -j"$(nproc)" \
  && cd /build/test \

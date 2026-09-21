@@ -17,7 +17,7 @@
 #include <unistd.h>
 #include <pwd.h>
 
-namespace lwe {
+namespace wallpaper_engine {
 
 inline std::string envOr(const char* name, const std::string& fallback) {
     const char* value = getenv(name);
@@ -157,4 +157,4 @@ inline bool writeFileAtomic(const std::string& path, const std::string& content,
     return true;
 }
 
-} // namespace lwe
+} // namespace wallpaper_engine

@@ -37,9 +37,9 @@ bool isInside(const std::string& directory, const std::string& path) {
 // case-insensitive lexicographic order — the Qt::CaseInsensitive comparison
 // the library was sorted with
 bool titleLess(const WallpaperEntry& a, const WallpaperEntry& b) {
-    return std::lexicographical_compare (
-        a.title.begin (), a.title.end (), b.title.begin (), b.title.end (),
-        [] (unsigned char x, unsigned char y) { return std::tolower (x) < std::tolower (y); });
+    return std::lexicographical_compare(
+        a.title.begin(), a.title.end(), b.title.begin(), b.title.end(),
+        [](unsigned char x, unsigned char y) { return std::tolower(x) < std::tolower(y); });
 }
 
 } // namespace

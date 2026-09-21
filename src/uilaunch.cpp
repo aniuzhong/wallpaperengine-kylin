@@ -22,9 +22,9 @@ namespace {
 // makes the Flatpak browser resolvable at all).
 std::vector<std::string> dataDirs() {
     std::vector<std::string> dirs;
-    dirs.push_back(lwe::envOr("XDG_DATA_HOME", lwe::homeDir() + "/.local/share"));
+    dirs.push_back(wallpaper_engine::envOr("XDG_DATA_HOME", wallpaper_engine::homeDir() + "/.local/share"));
 
-    const std::string fromEnv = lwe::envOr("XDG_DATA_DIRS", "/usr/local/share:/usr/share");
+    const std::string fromEnv = wallpaper_engine::envOr("XDG_DATA_DIRS", "/usr/local/share:/usr/share");
     size_t start = 0;
     while (start <= fromEnv.size()) {
         const size_t end = fromEnv.find(':', start);
@@ -216,12 +216,12 @@ std::string defaultBrowserExec() {
 
 bool openBrowser(const std::string& url, std::string* error) {
     const std::string exec = defaultBrowserExec();
-    if (!exec.empty() && lwe::spawnDetached(launchFor(exec, url).argv))
+    if (!exec.empty() && wallpaper_engine::spawnDetached(launchFor(exec, url).argv))
         return true;
 
     // the desktop's own opener: whatever association we failed to resolve,
     // this is the thing that would have resolved it
-    if (lwe::spawnDetached({ "xdg-open", url }))
+    if (wallpaper_engine::spawnDetached({ "xdg-open", url }))
         return true;
 
     if (error != nullptr)

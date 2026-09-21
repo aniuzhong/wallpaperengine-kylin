@@ -83,7 +83,7 @@ jobs:
       - name: Upload artifact (every run)
         uses: actions/upload-artifact@v4
         with:
-          name: "linux-wallpaperengine-kylin_${{ steps.ver.outputs.version }}_amd64"
+          name: "wallpaper-engine-kylin_${{ steps.ver.outputs.version }}_amd64"
           path: out/pkg.deb
           if-no-files-found: error
 

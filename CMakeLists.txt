@@ -62,7 +62,7 @@ add_library(wallpaper_service STATIC
     src/library.cpp
     src/report.cpp
     src/peonybuilder.cpp
-    src/integration.cpp
+    src/integration/peony.cpp
     src/engineunit.cpp
     src/engineprocess.cpp
 )
@@ -124,17 +124,17 @@ target_link_libraries(wallpaper-engine PRIVATE wallpaper_service httplib::httpli
 target_include_directories(wallpaper-engine PRIVATE src ${CMAKE_BINARY_DIR})
 target_compile_options(wallpaper-engine PRIVATE -Wall -Wextra)
 
-# ---- peony-alpha-shim
+# ---- peony-alpha
 # LD_PRELOAD interposition library: makes peony-qt-desktop's background
 # transparent and rewrites its window type for ukui-kwin. Exported symbols
 # carry explicit visibility attributes in the source; Qt symbols resolve
 # from the host process at load time, hence they are not linked here.
-add_library(peony-alpha-shim SHARED
-    src/hook/peony-alpha-shim.cpp
+add_library(peony-alpha SHARED
+    src/shim/peony-alpha.cpp
 )
-target_compile_options(peony-alpha-shim PRIVATE -O2 -Wall -fPIC -fvisibility=hidden)
-target_include_directories(peony-alpha-shim PRIVATE ${Qt5Gui_INCLUDE_DIRS} ${X11_INCLUDE_DIR} ${XCB_INCLUDE_DIRS})
-target_link_libraries(peony-alpha-shim PRIVATE ${X11_LIBRARIES} ${XCB_LIBRARIES} dl)
+target_compile_options(peony-alpha PRIVATE -O2 -Wall -fPIC -fvisibility=hidden)
+target_include_directories(peony-alpha PRIVATE ${Qt5Gui_INCLUDE_DIRS} ${X11_INCLUDE_DIR} ${XCB_INCLUDE_DIRS})
+target_link_libraries(peony-alpha PRIVATE ${X11_LIBRARIES} ${XCB_LIBRARIES} dl)
 
 # ---- engine (optional)
 # Two equivalent acquisition paths, everything stays inside build/:
@@ -175,7 +175,7 @@ if(BUILD_ENGINE)
 endif()
 
 # ---- install
-install(TARGETS wallpaper-engine peony-alpha-shim
+install(TARGETS wallpaper-engine peony-alpha
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib)
 

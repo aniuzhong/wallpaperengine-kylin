@@ -29,7 +29,7 @@ target_link_libraries (report_test PRIVATE Qt5::Core Qt5::Test nlohmann_json::nl
 add_test (NAME report_test COMMAND report_test)
 
 # T0: the peony integration's pure half (wallpaper candidate list, shim
-# environment) — integration.cpp keeps only the syscall sequence
+# environment) — integration/peony.cpp keeps only the syscall sequence
 add_executable (peonybuilder_test peonybuilder_test.cpp ../src/peonybuilder.cpp)
 target_link_libraries (peonybuilder_test PRIVATE Qt5::Core Qt5::Test)
 add_test (NAME peonybuilder_test COMMAND peonybuilder_test)
@@ -60,7 +60,7 @@ target_link_libraries (service_smoke_test PRIVATE wallpaper_service)
 add_test (NAME service_smoke_test COMMAND service_smoke_test)
 
 # T3: headless CLI end-to-end against the real user manager (isolated by
-# the dedicated linux-wallpaperengine-e2e-test unit name; config stays the user's own and is
+# the dedicated wallpaper-engine-e2e-test unit name; config stays the user's own and is
 # restored by cleanup)
 add_executable (cli_e2e_test cli_e2e_test.cpp ../src/config.cpp ../src/engineunit.cpp ../src/argvbuilder.cpp)
 target_link_libraries (cli_e2e_test PRIVATE Qt5::Core Qt5::DBus Qt5::Test wallpaper_service)
@@ -85,7 +85,7 @@ set_target_properties (shim_probe PROPERTIES
 add_executable (shim_hook_test shim_hook_test.cpp)
 target_link_libraries (shim_hook_test PRIVATE Qt5::Core Qt5::Gui Qt5::Test)
 target_compile_definitions (shim_hook_test PRIVATE
-    SHIM_PATH="${CMAKE_BINARY_DIR}/libpeony-alpha-shim.so"
+    SHIM_PATH="${CMAKE_BINARY_DIR}/libpeony-alpha.so"
     PROBE_PATH="${CMAKE_BINARY_DIR}/shim_probe"
     MARKER_PATH="${CMAKE_BINARY_DIR}/test-marker.png")
 add_test (NAME shim_hook_test COMMAND shim_hook_test)

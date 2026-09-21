@@ -14,7 +14,7 @@ remove|purge)
         uid=$(basename "$runtime")
         user=$(getent passwd "$uid" 2>/dev/null | cut -d: -f1)
         [ -n "$user" ] || continue
-        [ -x /opt/linux-wallpaperengine/bin/wallpaper-engine ] || continue
+        [ -x /opt/wallpaper-engine/bin/wallpaper-engine ] || continue
 
         # HOME has to be the user's: the config and the recorded previous
         # wallpaper both live under it, and runuser would otherwise hand over
@@ -23,12 +23,12 @@ remove|purge)
         if [ -x /sbin/runuser ]; then
             runuser -u "$user" -- env HOME="$home" XDG_RUNTIME_DIR="$runtime" \
                 DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
-                /opt/linux-wallpaperengine/bin/wallpaper-engine remove-integration \
+                /opt/wallpaper-engine/bin/wallpaper-engine teardown-integration \
                 >/dev/null 2>&1 || true
         elif [ -x /bin/su ]; then
             su -s /bin/sh "$user" -c "HOME='$home' XDG_RUNTIME_DIR='$runtime' \
                 DBUS_SESSION_BUS_ADDRESS='unix:path=$runtime/bus' \
-                /opt/linux-wallpaperengine/bin/wallpaper-engine remove-integration" \
+                /opt/wallpaper-engine/bin/wallpaper-engine teardown-integration" \
                 >/dev/null 2>&1 || true
         fi
     done
@@ -40,10 +40,10 @@ if [ -x /bin/systemctl ]; then
         [ -d "$runtime" ] || continue
         XDG_RUNTIME_DIR="$runtime" \
         DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
-            systemctl --user stop linux-wallpaperengine.service 2>/dev/null || true
+            systemctl --user stop wallpaper-engine.service 2>/dev/null || true
         XDG_RUNTIME_DIR="$runtime" \
         DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
-            systemctl --user stop linux-wallpaperengine-peony.service 2>/dev/null || true
+            systemctl --user stop wallpaper-engine-peony.service 2>/dev/null || true
     done
 fi
 exit 0

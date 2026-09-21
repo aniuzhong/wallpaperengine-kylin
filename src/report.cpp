@@ -22,23 +22,23 @@ bool isVideoPreview(const std::string& path) {
 
 // Wire name for an error kind. Callers branch on these strings, so they are
 // part of the contract: rename one and you rename it for consumers too.
-const char* kindName(lwe::Error::Kind kind) {
+const char* kindName(wallpaper_engine::Error::Kind kind) {
     switch (kind) {
-    case lwe::Error::NoError:
+    case wallpaper_engine::Error::NoError:
         return "ok";
-    case lwe::Error::BusUnreachable:
+    case wallpaper_engine::Error::BusUnreachable:
         return "bus-unreachable";
-    case lwe::Error::NoSuchUnit:
+    case wallpaper_engine::Error::NoSuchUnit:
         return "no-such-unit";
-    case lwe::Error::JobFailed:
+    case wallpaper_engine::Error::JobFailed:
         return "job-failed";
-    case lwe::Error::InvalidInput:
+    case wallpaper_engine::Error::InvalidInput:
         return "invalid-input";
-    case lwe::Error::FileError:
+    case wallpaper_engine::Error::FileError:
         return "file-error";
-    case lwe::Error::CorruptConfig:
+    case wallpaper_engine::Error::CorruptConfig:
         return "corrupt-config";
-    case lwe::Error::Unknown:
+    case wallpaper_engine::Error::Unknown:
         break;
     }
     return "unknown";
@@ -83,7 +83,7 @@ nlohmann::json library(const std::vector<WallpaperEntry>& entries) {
     return nlohmann::json::array({ std::move(arr) });
 }
 
-nlohmann::json error(const lwe::Error& error) {
+nlohmann::json error(const wallpaper_engine::Error& error) {
     nlohmann::json detail;
     detail["kind"] = kindName(error.kind);
     detail["message"] = error.message.empty() ? describe(error) : error.message;

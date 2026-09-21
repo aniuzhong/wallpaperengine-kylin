@@ -31,6 +31,6 @@ nlohmann::json library(const std::vector<WallpaperEntry>& entries);
 // {"error": {kind, message, dbusName?}} — the failure counterpart, so a
 // --json consumer never has to parse prose. dbusName is present only when
 // the failure came from the bus.
-nlohmann::json error(const lwe::Error& error);
+nlohmann::json error(const wallpaper_engine::Error& error);
 
 } // namespace Report

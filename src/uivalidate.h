@@ -23,7 +23,7 @@ bool tokenMatches(const std::string& provided, const std::string& expected);
 // page would then be same-origin with this server.
 bool hostAllowed(const std::string& hostHeader, int port);
 
-// The session token from a Cookie header ("a=1; lwe_token=xyz; b=2"), or
+// The session token from a Cookie header ("a=1; wallpaper_engine_session=xyz; b=2"), or
 // empty when absent. The token is deliberately not in the URL: a URL travels
 // through argv, and /proc/<pid>/cmdline is readable by every user on the
 // machine, while the browser's cookie store and /proc/<pid>/environ are not.

@@ -12,7 +12,7 @@ namespace SystemdLayer {
 
 // The one project-wide error type (src/error.h), re-exported here so this
 // layer's signatures keep reading as they always have.
-using Error = lwe::Error;
+using Error = wallpaper_engine::Error;
 
 // Value of an extra transient unit property: marshaled to its natural D-Bus
 // type (string / boolean / 64-bit signed / double).

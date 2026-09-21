@@ -89,29 +89,29 @@ std::string randomToken() {
     return token;
 }
 
-lwe::Error errorOf(lwe::Error::Kind kind, const std::string& message) {
-    lwe::Error error;
+wallpaper_engine::Error errorOf(wallpaper_engine::Error::Kind kind, const std::string& message) {
+    wallpaper_engine::Error error;
     error.kind = kind;
     error.message = message;
     return error;
 }
 
-int statusFor(lwe::Error::Kind kind) {
+int statusFor(wallpaper_engine::Error::Kind kind) {
     switch (kind) {
-    case lwe::Error::NoError:
+    case wallpaper_engine::Error::NoError:
         return 200;
-    case lwe::Error::InvalidInput:
+    case wallpaper_engine::Error::InvalidInput:
         return 400;
-    case lwe::Error::NoSuchUnit:
+    case wallpaper_engine::Error::NoSuchUnit:
         return 404;
-    case lwe::Error::JobFailed:
+    case wallpaper_engine::Error::JobFailed:
         return 502;
-    case lwe::Error::BusUnreachable:
+    case wallpaper_engine::Error::BusUnreachable:
         return 503;
-    case lwe::Error::FileError:
-    case lwe::Error::CorruptConfig:
+    case wallpaper_engine::Error::FileError:
+    case wallpaper_engine::Error::CorruptConfig:
         return 500;
-    case lwe::Error::Unknown:
+    case wallpaper_engine::Error::Unknown:
         break;
     }
     return 500;
@@ -122,7 +122,7 @@ void sendJson(httplib::Response& res, const nlohmann::json& body, int status = 2
     res.set_content(body.dump(), "application/json; charset=utf-8");
 }
 
-void sendError(httplib::Response& res, const lwe::Error& error) {
+void sendError(httplib::Response& res, const wallpaper_engine::Error& error) {
     sendJson(res, Report::error(error), statusFor(error.kind));
 }
 
@@ -141,7 +141,7 @@ void sendNotFound(httplib::Response& res, const std::string& message) {
 // ---- projections ----------------------------------------------------------
 
 nlohmann::json statusBody(const Config& config) {
-    lwe::Error busError;
+    wallpaper_engine::Error busError;
     const std::string state = EngineUnit::unitState(&busError);
     // the unit file is what systemd runs; config.json is the editor's draft
     std::map<std::string, std::string> screens = EngineUnit::unitBackgrounds();
@@ -150,7 +150,7 @@ nlohmann::json statusBody(const Config& config) {
 
     nlohmann::json body = Report::status(EngineUnit::unitName(), state, screens, config.enginePath);
     if (!busError.ok())
-        body["status"]["busError"] = lwe::describe(busError);
+        body["status"]["busError"] = wallpaper_engine::describe(busError);
     return body;
 }
 
@@ -225,13 +225,13 @@ std::string mimeTypeFor(const std::string& path) {
 void sendFile(const httplib::Request& req, httplib::Response& res, const std::string& path) {
     struct stat info {};
     if (::stat(path.c_str(), &info) != 0 || !S_ISREG(info.st_mode)) {
-        sendError(res, errorOf(lwe::Error::FileError, "cannot read " + path));
+        sendError(res, errorOf(wallpaper_engine::Error::FileError, "cannot read " + path));
         return;
     }
 
     auto file = std::make_shared<std::ifstream>(path, std::ios::binary);
     if (!file->is_open()) {
-        sendError(res, errorOf(lwe::Error::FileError, "cannot open " + path));
+        sendError(res, errorOf(wallpaper_engine::Error::FileError, "cannot open " + path));
         return;
     }
 
@@ -287,7 +287,7 @@ void registerRoutes(httplib::Server& server, const std::shared_ptr<State>& state
             message = error.what();
         } catch (...) {
         }
-        sendError(res, errorOf(lwe::Error::Unknown, message));
+        sendError(res, errorOf(wallpaper_engine::Error::Unknown, message));
     });
 
     // An unmatched route is a real 404: keep the status, and give it the same
@@ -404,13 +404,13 @@ void registerRoutes(httplib::Server& server, const std::shared_ptr<State>& state
         bool parsed = false;
         const nlohmann::json body = parseBody(req, &parsed);
         if (!parsed) {
-            sendError(res, errorOf(lwe::Error::InvalidInput, "request body is not JSON"));
+            sendError(res, errorOf(wallpaper_engine::Error::InvalidInput, "request body is not JSON"));
             return;
         }
 
         const std::string id = body.value("id", std::string());
         if (!isSafeWallpaperId(id)) {
-            sendError(res, errorOf(lwe::Error::InvalidInput, "missing or unusable wallpaper id"));
+            sendError(res, errorOf(wallpaper_engine::Error::InvalidInput, "missing or unusable wallpaper id"));
             return;
         }
 
@@ -419,7 +419,7 @@ void registerRoutes(httplib::Server& server, const std::shared_ptr<State>& state
         const bool known = std::any_of(library.begin(), library.end(),
                                        [&id](const WallpaperEntry& entry) { return entry.id == id; });
         if (!known) {
-            sendError(res, errorOf(lwe::Error::InvalidInput, "unknown wallpaper id " + id));
+            sendError(res, errorOf(wallpaper_engine::Error::InvalidInput, "unknown wallpaper id " + id));
             return;
         }
 
@@ -427,11 +427,11 @@ void registerRoutes(httplib::Server& server, const std::shared_ptr<State>& state
         if (screen.empty())
             screen = EngineUnit::defaultScreenFor(config, EngineUnit::fallbackScreenName());
         if (screen.empty()) {
-            sendError(res, errorOf(lwe::Error::InvalidInput, "no screen to target"));
+            sendError(res, errorOf(wallpaper_engine::Error::InvalidInput, "no screen to target"));
             return;
         }
 
-        lwe::Error error;
+        wallpaper_engine::Error error;
         if (!EngineUnit::applyConfig(EngineUnit::assignScreen(config, screen, id), &error)) {
             sendError(res, error);
             return;
@@ -443,9 +443,9 @@ void registerRoutes(httplib::Server& server, const std::shared_ptr<State>& state
     });
 
     // start/stop/restart differ only in which unit operation they call
-    const auto lifecycle = [](bool (*operation)(lwe::Error*)) {
+    const auto lifecycle = [](bool (*operation)(wallpaper_engine::Error*)) {
         return [operation](const httplib::Request&, httplib::Response& res) {
-            lwe::Error error;
+            wallpaper_engine::Error error;
             if (!operation(&error)) {
                 sendError(res, error);
                 return;
@@ -461,12 +461,12 @@ void registerRoutes(httplib::Server& server, const std::shared_ptr<State>& state
         bool parsed = false;
         const nlohmann::json patch = parseBody(req, &parsed);
         if (!parsed) {
-            sendError(res, errorOf(lwe::Error::InvalidInput, "request body is not JSON"));
+            sendError(res, errorOf(wallpaper_engine::Error::InvalidInput, "request body is not JSON"));
             return;
         }
 
         const Config updated = Config::load().patched(patch);
-        lwe::Error error;
+        wallpaper_engine::Error error;
         if (!EngineUnit::applyConfig(updated, &error)) {
             sendError(res, error);
             return;
@@ -475,7 +475,7 @@ void registerRoutes(httplib::Server& server, const std::shared_ptr<State>& state
     });
 
     server.Post("/api/integration/setup", [](const httplib::Request&, httplib::Response& res) {
-        lwe::Error error;
+        wallpaper_engine::Error error;
         if (!Integration::setup(&error)) {
             sendError(res, error);
             return;
@@ -487,7 +487,7 @@ void registerRoutes(httplib::Server& server, const std::shared_ptr<State>& state
     // work out by hand that peony runs under a transient unit with the shim
     // preloaded — and that the desktop's own wallpaper had been replaced.
     server.Post("/api/integration/remove", [](const httplib::Request&, httplib::Response& res) {
-        lwe::Error error;
+        wallpaper_engine::Error error;
         if (!Integration::teardown(&error)) {
             sendError(res, error);
             return;
@@ -500,7 +500,7 @@ void registerRoutes(httplib::Server& server, const std::shared_ptr<State>& state
     server.Get(R"(/api/preview/([^/]+))", [](const httplib::Request& req, httplib::Response& res) {
         const std::string id = req.matches[1];
         if (!isSafeWallpaperId(id)) {
-            sendError(res, errorOf(lwe::Error::InvalidInput, "unusable wallpaper id"));
+            sendError(res, errorOf(wallpaper_engine::Error::InvalidInput, "unusable wallpaper id"));
             return;
         }
 
@@ -523,7 +523,7 @@ void registerRoutes(httplib::Server& server, const std::shared_ptr<State>& state
     server.Get(R"(/api/properties/([^/]+))", [state](const httplib::Request& req, httplib::Response& res) {
         const std::string id = req.matches[1];
         if (!isSafeWallpaperId(id)) {
-            sendError(res, errorOf(lwe::Error::InvalidInput, "unusable wallpaper id"));
+            sendError(res, errorOf(wallpaper_engine::Error::InvalidInput, "unusable wallpaper id"));
             return;
         }
 
@@ -557,7 +557,7 @@ void registerRoutes(httplib::Server& server, const std::shared_ptr<State>& state
         std::lock_guard<std::mutex> lock(state->jobsMutex);
         const auto job = state->jobs.find(jobId);
         if (job == state->jobs.end()) {
-            sendError(res, errorOf(lwe::Error::InvalidInput, "unknown job " + jobId));
+            sendError(res, errorOf(wallpaper_engine::Error::InvalidInput, "unknown job " + jobId));
             return;
         }
         sendJson(res, { { "done", job->second.done },

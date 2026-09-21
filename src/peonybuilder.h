@@ -3,12 +3,14 @@
 #include <map>
 #include <string>
 
-// Pure half of the peony integration — the same split as
+// Pure half of the peony backend — the same split as
 // unitbuilder/systemdunit in the systemd layer. Everything here is a plain
 // function of its arguments, so the fiddly parts (the wallpaper candidate
 // list, the shim environment) are unit-testable; the syscall sequence that
-// consumes them lives in integration.cpp.
-namespace Integration {
+// consumes them lives in integration/peony.cpp. The namespace is the
+// backend's (Peony), so a future desktop-shell backend gets its own builder
+// namespace instead of growing into this one.
+namespace Peony {
 
 // True when a /proc/<pid>/cmdline is the peony desktop process. The uid
 // check stays with the caller: another session's peony is not ours to touch.
@@ -44,4 +46,4 @@ std::map<std::string, std::string> buildShimEnvironment(const std::string& shimP
                                                         const std::string& wallpaperList,
                                                         const std::string& logPath);
 
-} // namespace Integration
+} // namespace Peony

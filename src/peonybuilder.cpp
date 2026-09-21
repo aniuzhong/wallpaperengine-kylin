@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <vector>
 
-namespace Integration {
+namespace Peony {
 
 bool isPeonyDesktopCmdline(const std::string& cmdline) {
     return cmdline.find("peony-qt-desktop") != std::string::npos;
@@ -13,16 +13,16 @@ std::string buildWallpaperList(const std::string& marker, const std::string& nor
                                const std::string& previous) {
     std::vector<std::string> paths;
     for (const std::string& candidate : { previous, normalized, marker }) {
-        if (candidate.empty ())
+        if (candidate.empty())
             continue;
-        if (std::find (paths.begin (), paths.end (), candidate) != paths.end ())
+        if (std::find(paths.begin(), paths.end(), candidate) != paths.end())
             continue;
-        paths.push_back (candidate);
+        paths.push_back(candidate);
     }
 
     std::string joined;
     for (const std::string& path : paths) {
-        if (!joined.empty ())
+        if (!joined.empty())
             joined += ':';
         joined += path;
     }
@@ -44,4 +44,4 @@ std::map<std::string, std::string> buildShimEnvironment(const std::string& shimP
     };
 }
 
-} // namespace Integration
+} // namespace Peony

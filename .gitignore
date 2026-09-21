@@ -4,3 +4,7 @@ build/
 Testing/
 tmp/
 third_party/
+
+.cache/
+
+.claude/

@@ -10,7 +10,7 @@
 // Operations take `Error* error = nullptr` and return bool: callers that
 // only need success/failure pass nothing, callers that report to a user
 // pass a slot and get the reason.
-namespace lwe {
+namespace wallpaper_engine {
 
 struct Error {
     enum Kind {
@@ -28,14 +28,14 @@ struct Error {
     std::string dbusName; // D-Bus error name, when the failure came from one
     std::string message;  // human-readable detail
 
-    bool ok () const { return kind == NoError; }
+    bool ok() const { return kind == NoError; }
 };
 
 // Trailing ": <message>" for logging a non-ok error; empty for NoError.
-inline std::string describe (const Error& error) {
+inline std::string describe(const Error& error) {
     if (error.kind == Error::NoError)
         return {};
-    return error.message.empty () ? std::string ("unknown error") : error.message;
+    return error.message.empty() ? std::string("unknown error") : error.message;
 }
 
-} // namespace lwe
+} // namespace wallpaper_engine

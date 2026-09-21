@@ -1,5 +1,14 @@
-// peony-alpha-shim: makes peony-qt-desktop's desktop background truly
-// transparent (LD_PRELOAD injection).
+// peony-alpha: the library behind the peony backend of the desktop
+// integration. Deployed as libpeony-alpha.so and injected with LD_PRELOAD,
+// it makes peony-qt-desktop's desktop background truly transparent.
+//
+// Terminology: this is an interposer ("the shim"), not a code patch. It
+// never rewrites memory; it works purely through ELF symbol resolution.
+// LD_PRELOAD places it ahead of libQt5Widgets/libxcb/libX11 in the dynamic
+// loader's global search order, so the hooked symbols bind to this library
+// first, and dlsym(RTLD_NEXT) chains to the real implementations. The word
+// "injection" in the integration docs refers only to deploying the library
+// through the environment — nothing in the host process is modified.
 //
 // Two interception points (both verified against the peony 3.20.4.14 / Qt
 // 5.12 symbol tables of Kylin V10 SP1):
@@ -46,38 +55,108 @@
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 
-#include <cstdlib>
-#include <cstring>
+#include <cerrno>
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
-// ---- logging
+#include <fcntl.h>
+#include <sys/types.h>
+#include <time.h>
+#include <unistd.h>
 
-static void shim_log(const char* fmt, ...) {
-    const char* path = getenv("PEONY_ALPHA_LOG");
-    if (!path || !*path)
+// ---- logging ---------------------------------------------------------------
+//
+// A debugging surface for the injection itself, designed so that it can
+// never harm the process being interposed:
+//
+//   - one file descriptor for the process lifetime, opened O_APPEND so all
+//     generations append to one file (systemd restarts peony with
+//     Restart=on-failure), and O_CLOEXEC so the descriptor can never leak
+//     into a child the way the LD_PRELOAD variable once did;
+//   - every line is prefixed with the wall clock and the pid: a
+//     crash-restart loop then reads as distinct generations instead of one
+//     undifferentiated stream, and the timestamps line up with
+//     journalctl -u wallpaper-engine-peony;
+//   - one write() per line, sized to stay within the pipe-buffer budget, so
+//     concurrent processes cannot interleave mid-line;
+//   - write failures are swallowed: losing a debug line beats disturbing
+//     the host, and an unreadable path disables logging entirely.
+
+namespace {
+
+constexpr size_t kLogLineMax = 512;
+
+int log_fd() {
+    static const int fd = [] {
+        const char* path = getenv("PEONY_ALPHA_LOG");
+        if (path == nullptr || *path == '\0')
+            return -1;
+        return open(path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
+    }();
+    return fd;
+}
+
+void shim_log(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+
+void shim_log(const char* fmt, ...) {
+    const int fd = log_fd();
+    if (fd < 0)
         return;
-    if (FILE* f = fopen(path, "a")) {
-        va_list ap;
-        va_start(ap, fmt);
-        vfprintf(f, fmt, ap);
-        va_end(ap);
-        fclose(f);
+
+    timespec now {};
+    clock_gettime(CLOCK_REALTIME, &now);
+    char line[kLogLineMax];
+    const int prefix = snprintf(line, sizeof line, "%lld.%03ld [pid %ld] ", static_cast<long long>(now.tv_sec),
+                                now.tv_nsec / 1000000L, static_cast<long>(getpid()));
+    if (prefix <= 0 || static_cast<size_t>(prefix) >= sizeof line)
+        return;
+
+    va_list ap;
+    va_start(ap, fmt);
+    const int body = vsnprintf(line + prefix, sizeof line - prefix, fmt, ap);
+    va_end(ap);
+    if (body <= 0)
+        return;
+
+    // vsnprintf returns the would-be length; clamp a truncated line, then
+    // end with exactly one newline whatever the caller passed
+    size_t length = prefix + static_cast<size_t>(body);
+    if (length >= sizeof line)
+        length = sizeof line - 1;
+    if (line[length - 1] != '\n') {
+        if (length + 1 >= sizeof line)
+            length = sizeof line - 2;
+        line[length++] = '\n';
+    }
+
+    size_t written = 0;
+    while (written < length) {
+        const ssize_t n = write(fd, line + written, length - written);
+        if (n < 0) {
+            if (errno == EINTR)
+                continue;
+            break;
+        }
+        written += static_cast<size_t>(n);
     }
 }
 
-static bool shim_enabled() {
+} // namespace
+
+bool shim_enabled() {
     const char* p = getenv("PEONY_ALPHA_WALLPAPER");
     return p && *p;
 }
 
-// ---- 0. do not follow the injection into children
+// ---- 0. do not follow the injection into children --------------------------
 //
 // LD_PRELOAD is inherited by every process peony spawns, but this library
 // only loads into a process that already has Qt: the Qt symbols it uses
 // resolve from the host. A non-Qt child — and GIO opens files through
 // /bin/sh, so that is most of them — dies at load time with
-//    symbol lookup error: libpeony-alpha-shim.so: undefined symbol: qt_version_tag
+//    symbol lookup error: libpeony-alpha.so: undefined symbol: qt_version_tag
 // before it can run a single instruction. The visible symptom was a desktop
 // where only the icons peony handles itself (computer, trash, home) still
 // opened, while every real file did nothing at all.
@@ -85,11 +164,12 @@ static bool shim_enabled() {
 // The library is already mapped by the time this constructor runs, so
 // dropping the variable costs the desktop nothing and spares every child.
 __attribute__((constructor)) static void shim_drop_preload_for_children() {
+    shim_log("[shim] interposer mapped, enabled=%d\n", shim_enabled() ? 1 : 0);
     unsetenv("LD_PRELOAD");
     shim_log("[shim] dropped LD_PRELOAD so children load clean\n");
 }
 
-// ---- 1. QPixmap constructor hook
+// ---- 1. QPixmap constructor hook -------------------------------------------
 //
 // The peony binary references:
 //   _ZN7QPixmapC1ERK7QStringPKc6QFlagsIN2Qt19ImageConversionFlagEE
@@ -114,7 +194,7 @@ using pixmap_ctor3_t = void (*)(QPixmap*, const QString&, const char*, Qt::Image
 // trip.
 static constexpr const char* kAccountsBackgroundDir = "/var/lib/AccountsService/backgrounds/";
 
-static bool is_wallpaper_path(const QString& fileName) {
+bool is_wallpaper_path(const QString& fileName) {
     const char* list = getenv("PEONY_ALPHA_WALLPAPER");
     if (!list || !*list)
         return false;
@@ -139,7 +219,7 @@ static bool is_wallpaper_path(const QString& fileName) {
     return false;
 }
 
-static void nullify_if_wallpaper(QPixmap* pm, const QString& fileName) {
+void nullify_if_wallpaper(QPixmap* pm, const QString& fileName) {
     if (!pm->isNull() && is_wallpaper_path(fileName)) {
         // same-size fully transparent replacement; fill(transparent) yields
         // valid premultiplied alpha=0 pixels
@@ -150,6 +230,11 @@ static void nullify_if_wallpaper(QPixmap* pm, const QString& fileName) {
                  pm->size().width(), pm->size().height());
     }
 }
+
+// The exported names below are ABI, not API: they exist so the dynamic
+// loader binds peony's references here. Their spelling is the mangled C++
+// name / the C library symbol and is not negotiable, hence the exemption
+// from the usual naming conventions.
 
 extern "C" __attribute__((visibility("default"))) void
 _ZN7QPixmapC1ERK7QStringPKc6QFlagsIN2Qt19ImageConversionFlagEE(QPixmap* pm, const QString& fileName,
@@ -173,12 +258,12 @@ _ZN7QPixmapC2ERK7QStringPKc6QFlagsIN2Qt19ImageConversionFlagEE(QPixmap* pm, cons
     nullify_if_wallpaper(pm, fileName);
 }
 
-// ---- 2. property rewriting (xcb/Xlib)
+// ---- 2. property rewriting (xcb/Xlib) --------------------------------------
 
 static xcb_atom_t a_wm_type = 0, a_type_desktop = 0, a_type_normal = 0;
 static xcb_atom_t a_wm_state = 0, a_state_below = 0;
 
-static void ensure_atoms(xcb_connection_t* c) {
+void ensure_atoms(xcb_connection_t* c) {
     // C++11 thread-safe static initialization: the interning runs exactly
     // once even if several threads race into the property hooks
     static const bool atoms_ready = [c] {
@@ -186,9 +271,11 @@ static void ensure_atoms(xcb_connection_t* c) {
             const char* name;
             xcb_atom_t* out;
         } list[] = {
-            { "_NET_WM_WINDOW_TYPE", &a_wm_type },         { "_NET_WM_WINDOW_TYPE_DESKTOP", &a_type_desktop },
-            { "_NET_WM_WINDOW_TYPE_NORMAL", &a_type_normal }, { "_NET_WM_STATE", &a_wm_state },
-            { "_NET_WM_STATE_BELOW", &a_state_below },
+            {"_NET_WM_WINDOW_TYPE", &a_wm_type},
+            {"_NET_WM_WINDOW_TYPE_DESKTOP", &a_type_desktop},
+            {"_NET_WM_WINDOW_TYPE_NORMAL", &a_type_normal},
+            {"_NET_WM_STATE", &a_wm_state},
+            {"_NET_WM_STATE_BELOW", &a_state_below},
         };
         for (auto& it : list) {
             xcb_intern_atom_cookie_t ck = xcb_intern_atom(c, 0, strlen(it.name), it.name);
@@ -199,15 +286,15 @@ static void ensure_atoms(xcb_connection_t* c) {
             }
         }
         shim_log("[shim] xcb atoms ready (type=%lu desktop=%lu normal=%lu state=%lu below=%lu)\n",
-                 (unsigned long) a_wm_type, (unsigned long) a_type_desktop, (unsigned long) a_type_normal,
-                 (unsigned long) a_wm_state, (unsigned long) a_state_below);
+                 (unsigned long)a_wm_type, (unsigned long)a_type_desktop, (unsigned long)a_type_normal,
+                 (unsigned long)a_wm_state, (unsigned long)a_state_below);
         return true;
-    } ();
-    (void) atoms_ready;
+    }();
+    (void)atoms_ready;
 }
 
-using xcb_ccp_t = xcb_void_cookie_t (*) (xcb_connection_t*, uint8_t, xcb_window_t, xcb_atom_t, xcb_atom_t, uint8_t,
-                                         uint32_t, const void*);
+using xcb_ccp_t = xcb_void_cookie_t (*)(xcb_connection_t*, uint8_t, xcb_window_t, xcb_atom_t, xcb_atom_t, uint8_t,
+                                        uint32_t, const void*);
 static xcb_ccp_t real_xcb_ccp = nullptr;
 
 __attribute__((visibility("default"))) xcb_void_cookie_t
@@ -236,7 +323,8 @@ xcb_change_property(xcb_connection_t* c, uint8_t mode, xcb_window_t window, xcb_
             }
         } else if (property == a_wm_state) {
             bool has_below = false;
-            for (uint32_t i = 0; i < data_len; i++) has_below |= (atoms[i] == a_state_below);
+            for (uint32_t i = 0; i < data_len; i++)
+                has_below |= (atoms[i] == a_state_below);
             if (!has_below && data_len < 32) {
                 xcb_atom_t buf[33];
                 memcpy(buf, data, data_len * 4);
@@ -251,7 +339,7 @@ xcb_change_property(xcb_connection_t* c, uint8_t mode, xcb_window_t window, xcb_
 
 // Xlib fallback (KWindowSystem and other paths may go through Xlib; note the
 // 32-bit property data is an array of longs)
-using xlib_ccp_t = int (*) (Display*, Window, Atom, Atom, int, int, const unsigned char*, int);
+using xlib_ccp_t = int (*)(Display*, Window, Atom, Atom, int, int, const unsigned char*, int);
 static xlib_ccp_t real_xlib_ccp = nullptr;
 
 static Atom xlib_atom(Display* d, const char* name) {
@@ -276,8 +364,8 @@ XChangeProperty(Display* display, Window w, Atom property, Atom type, int format
             x_state_below = xlib_atom(display, "_NET_WM_STATE_BELOW");
             shim_log("[shim] xlib atoms ready\n");
             return true;
-        } ();
-        (void) xlib_atoms_ready;
+        }();
+        (void)xlib_atoms_ready;
 
         if (type == XA_ATOM && property == x_wm_type) {
             const auto* in = reinterpret_cast<const unsigned long*>(data);
@@ -285,25 +373,27 @@ XChangeProperty(Display* display, Window w, Atom property, Atom type, int format
             bool changed = false;
             for (int i = 0; i < nelements; i++) {
                 buf[i] = in[i];
-                if (buf[i] == (unsigned long) x_type_desktop) {
-                    buf[i] = (unsigned long) x_type_normal;
+                if (buf[i] == (unsigned long)x_type_desktop) {
+                    buf[i] = (unsigned long)x_type_normal;
                     changed = true;
                 }
             }
             if (changed) {
-                shim_log("[shim] xlib win 0x%lx: DESKTOP -> NORMAL\n", (unsigned long) w);
-                return real_xlib_ccp(display, w, property, type, format, mode, (unsigned char*) buf, nelements);
+                shim_log("[shim] xlib win 0x%lx: DESKTOP -> NORMAL\n", (unsigned long)w);
+                return real_xlib_ccp(display, w, property, type, format, mode, (unsigned char*)buf, nelements);
             }
         } else if (type == XA_ATOM && property == x_wm_state) {
             const auto* in = reinterpret_cast<const unsigned long*>(data);
             bool has_below = false;
-            for (int i = 0; i < nelements; i++) has_below |= (in[i] == (unsigned long) x_state_below);
+            for (int i = 0; i < nelements; i++)
+                has_below |= (in[i] == (unsigned long)x_state_below);
             if (!has_below) {
                 unsigned long buf[33];
-                for (int i = 0; i < nelements; i++) buf[i] = in[i];
-                buf[nelements++] = (unsigned long) x_state_below;
-                shim_log("[shim] xlib win 0x%lx: appended BELOW\n", (unsigned long) w);
-                return real_xlib_ccp(display, w, property, type, format, mode, (unsigned char*) buf, nelements);
+                for (int i = 0; i < nelements; i++)
+                    buf[i] = in[i];
+                buf[nelements++] = (unsigned long)x_state_below;
+                shim_log("[shim] xlib win 0x%lx: appended BELOW\n", (unsigned long)w);
+                return real_xlib_ccp(display, w, property, type, format, mode, (unsigned char*)buf, nelements);
             }
         }
     }

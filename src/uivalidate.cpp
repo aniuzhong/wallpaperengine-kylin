@@ -5,7 +5,7 @@
 
 namespace Ui {
 
-const char* const kSessionCookie = "lwe_session";
+const char* const kSessionCookie = "wallpaper_engine_session";
 
 bool tokenMatches(const std::string& provided, const std::string& expected) {
     if (expected.empty())

@@ -1,4 +1,4 @@
-Package: linux-wallpaperengine-kylin
+Package: wallpaper-engine-kylin
 Version: @VERSION@
 Section: utils
 Priority: optional
@@ -11,5 +11,5 @@ Description: Wallpaper Engine wallpapers on Kylin V10 SP1 (linux-wallpaperengine
  Repackaging of linux-wallpaperengine for Kylin V10 SP1 with UKUI desktop
  integration: renders Steam Workshop wallpapers as the desktop background.
  Includes the peony interposition shim for transparent desktop icon support.
- The engine binary and libraries install under /opt/linux-wallpaperengine;
+ The engine binary and libraries install under /opt/wallpaper-engine;
  the wallpaper runs under the user's own systemd session (no root service).

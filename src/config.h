@@ -10,6 +10,12 @@
 
 // The config file is a JSON projection of linux-wallpaperengine's CLI
 // arguments. Every field maps to an engine flag.
+//
+// The file carries a "schemaVersion" key so a future schema change can
+// recognize and migrate files written by an older build. The loader
+// deliberately does not read it today: it is tolerant of unknown keys and
+// wrongly-typed values, and when a version finally needs different
+// treatment, branching on the key is the migration hook.
 struct Config {
     std::string enginePath;                                       // engine binary
     std::string assetsDir;                                        // --assets-dir
@@ -29,18 +35,18 @@ struct Config {
     bool disableParallax = false;                                 // --disable-parallax
     std::map<std::string, std::map<std::string, std::string>> properties; // wallpaper ID -> {property: value} (--set-property)
 
-    static std::string configDir();  // ~/.config/lwe-dynamic-wallpaper
+    static std::string configDir();  // ~/.config/wallpaper-engine
     static std::string configPath();
 
     // A missing file is not an error: the resolved defaults are the answer.
     // A file that exists but does not parse reports CorruptConfig — the
     // defaults still come back, but the caller can now tell the two apart
     // (and say so, instead of silently showing defaults).
-    static Config load(lwe::Error* error = nullptr);
+    static Config load(wallpaper_engine::Error* error = nullptr);
 
     // Atomic replace (write-temp + rename): a concurrent reader sees the old
     // config or the new one, never a truncated file.
-    bool save(lwe::Error* error = nullptr) const;
+    bool save(wallpaper_engine::Error* error = nullptr) const;
 
     // A copy with the user-editable fields updated from |patch|. Unknown keys
     // are ignored (forward compatibility) and so are wrongly-typed values
