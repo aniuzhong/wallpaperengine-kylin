@@ -25,27 +25,6 @@ FetchContent_Declare(nlohmann_json
     GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(nlohmann_json)
 
-# The browser frontend's HTTP server: header-only, single file, no package to
-# install on Kylin. Every optional backend is forced off — this server speaks
-# plain HTTP on loopback only, and leaving them on would pull OpenSSL and the
-# compression libraries into the deb's dependency list for nothing.
-#
-# The non-blocking resolver is off for the same reason: it exists to bound a
-# DNS lookup, and on Linux it drags in libanl. This server only ever binds
-# and connects to numeric loopback addresses, so there is nothing to resolve.
-set(HTTPLIB_USE_OPENSSL_IF_AVAILABLE OFF CACHE BOOL "" FORCE)
-set(HTTPLIB_USE_ZLIB_IF_AVAILABLE OFF CACHE BOOL "" FORCE)
-set(HTTPLIB_USE_BROTLI_IF_AVAILABLE OFF CACHE BOOL "" FORCE)
-set(HTTPLIB_USE_ZSTD_IF_AVAILABLE OFF CACHE BOOL "" FORCE)
-set(HTTPLIB_USE_NON_BLOCKING_GETADDRINFO OFF CACHE BOOL "" FORCE)
-set(HTTPLIB_INSTALL OFF CACHE BOOL "" FORCE)
-set(HTTPLIB_TEST OFF CACHE BOOL "" FORCE)
-FetchContent_Declare(cpp_httplib
-    GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
-    GIT_TAG v0.56.0
-    GIT_SHALLOW TRUE)
-FetchContent_MakeAvailable(cpp_httplib)
-
 # ---- wallpaper_service
 # Control core (frontend-free): the generic systemd D-Bus client plus the
 # wallpaper domain logic (config persistence, argv mapping, library scan,
@@ -70,57 +49,15 @@ target_link_libraries(wallpaper_service PUBLIC nlohmann_json::nlohmann_json ${XC
 target_compile_options(wallpaper_service PRIVATE -Wall -Wextra)
 
 # ---- wallpaper-engine
-# Frontend binary: the headless CLI plus the browser frontend it serves on
-# loopback. Qt-free like the service layer — it links this and nothing else,
-# so a Qt include anywhere in src/ (outside hook/) breaks the link.
-#
-# The single-page app is embedded: no asset directory to install, no path to
-# resolve at run time. The sources stay real .html/.css/.js files and are
-# read here at configure time.
-file(READ ${CMAKE_SOURCE_DIR}/src/ui/index.html UI_INDEX_HTML)
-file(READ ${CMAKE_SOURCE_DIR}/src/ui/style.css UI_STYLE_CSS)
-file(READ ${CMAKE_SOURCE_DIR}/src/ui/app.js UI_APP_JS)
-configure_file(${CMAKE_SOURCE_DIR}/cmake/uiassets.cpp.in ${CMAKE_BINARY_DIR}/uiassets.cpp @ONLY)
-
-# The app icon doubles as the page's favicon: launched with --app= the window
-# has no other place to get an icon from, and Chromium takes it from here.
-# Embedded as bytes rather than as a raw string literal — PNG data contains
-# NULs, and a string literal would stop at the first one.
-file(READ ${CMAKE_SOURCE_DIR}/icon/wallpaper-engine-256.png UI_ICON_HEX HEX)
-string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," UI_ICON_BYTES "${UI_ICON_HEX}")
-file(WRITE ${CMAKE_BINARY_DIR}/uiicon.h
-"// Generated from icon/wallpaper-engine-256.png at configure time; do not edit.
-#pragma once
-
-#include <cstddef>
-
-namespace Ui {
-
-static const unsigned char kIconPng[] = {${UI_ICON_BYTES}};
-static const std::size_t kIconPngSize = sizeof(kIconPng);
-
-} // namespace Ui
-")
-
-# configure_file does not watch its inputs: without this, editing the page
-# and running `cmake --build` links the previous assets in and the change
-# appears to do nothing.
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    ${CMAKE_SOURCE_DIR}/src/ui/index.html
-    ${CMAKE_SOURCE_DIR}/src/ui/style.css
-    ${CMAKE_SOURCE_DIR}/src/ui/app.js
-    ${CMAKE_SOURCE_DIR}/icon/wallpaper-engine-256.png)
-
+# The headless CLI frontend. Qt-free like the service layer — it links this
+# and nothing else, so a Qt include anywhere in src/ (outside hook/) breaks
+# the link.
 add_executable(wallpaper-engine
     src/main.cpp
     src/cli.cpp
-    src/ui.cpp
-    src/uivalidate.cpp
-    src/uilaunch.cpp
-    ${CMAKE_BINARY_DIR}/uiassets.cpp
 )
-target_link_libraries(wallpaper-engine PRIVATE wallpaper_service httplib::httplib Threads::Threads)
-target_include_directories(wallpaper-engine PRIVATE src ${CMAKE_BINARY_DIR})
+target_link_libraries(wallpaper-engine PRIVATE wallpaper_service Threads::Threads)
+target_include_directories(wallpaper-engine PRIVATE src)
 target_compile_options(wallpaper-engine PRIVATE -Wall -Wextra)
 
 # ---- peony-alpha

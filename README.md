@@ -17,7 +17,6 @@ deploying it through the environment.
 | Identifier class | Grammar | Examples |
 |---|---|---|
 | Product control plane | `wallpaper-engine` / `WALLPAPER_ENGINE_*` | binary, `~/.config/wallpaper-engine/`, `wallpaper-engine.service`, `WALLPAPER_ENGINE_UNIT` |
-| App id (reverse-DNS, D-Bus-safe) | `io.github.aniuzhong.WallpaperEngine` | desktop file, bus name, icons, portal scopes |
 | Integration backend (host process) | lowercase host name | `peony` |
 | Interposer library + its env contract | `lib<host>-<effect>.so`, `<HOST>_<EFFECT>_WALLPAPER` | `libpeony-alpha.so`, `PEONY_ALPHA_WALLPAPER`; the shim log is always on, at `~/.local/share/wallpaper-engine/<host>/` (follows `XDG_DATA_HOME`) |
 | Transient unit supervising an injected shell | `wallpaper-engine-<host>` | `wallpaper-engine-peony` |
@@ -26,26 +25,20 @@ The engine keeps its upstream name on disk: the `linux-wallpaperengine`
 binary, and the deb payload directory `/opt/wallpaper-engine/` that holds
 it next to `bin/wallpaper-engine`.
 
-## Frontends
+## Frontend
 
-Both frontends sit on the same Qt-free service layer
-(`wallpaper_service`), which owns the config file, the engine argv, the
-systemd user unit and the desktop integration. Neither frontend talks to
-systemctl or writes unit files itself — they link the service and nothing
-else, and the JSON they publish comes from the same pure projections in
-`src/report.cpp`, so they cannot drift apart.
+The CLI sits on the Qt-free service layer (`wallpaper_service`), which owns
+the config file, the engine argv, the systemd user unit and the desktop
+integration. The CLI never talks to systemctl or writes unit files itself —
+it links the service and nothing else, and the JSON it publishes comes from
+the pure projections in `src/report.cpp`.
 
 - **`wallpaper-engine <command>`** — the headless CLI. Works over SSH and
   with no display at all; `status --json` and `list --json` make it
   scriptable.
-- **`wallpaper-engine ui`** — the browser frontend. A loopback-only HTTP
-  server serves a single-page app (embedded in the binary) and opens it in
-  the user's default browser with `--app=`, so it appears as its own window.
-  It binds an OS-assigned port, requires a per-run session token, and exits
-  once the page stops talking to it.
 
 The wallpaper itself runs under the user's own systemd session, so closing
-either frontend never affects a running wallpaper.
+the CLI never affects a running wallpaper.
 
 ## Build
 
@@ -53,8 +46,8 @@ Qt is build-time only — the shim compiles against Qt headers (resolved from
 the host peony process at load time) and the tests use QtTest. The shipped
 binaries link no Qt at all.
 
-Build dependencies: Qt5 Core/Gui, xcb-randr, libpng, libsystemd. Two more are
-fetched over git at configure time: nlohmann/json and cpp-httplib.
+Build dependencies: Qt5 Core/Gui, xcb-randr, libpng, libsystemd. One more is
+fetched over git at configure time: nlohmann/json.
 
     cmake -S . -B build
     cmake --build build
@@ -74,12 +67,10 @@ produces the .deb. The Kylin base image is provisioned by
 
 ## Layout
 
-    src/                    service layer (Qt-free), CLI, browser frontend
+    src/                    service layer (Qt-free) and the CLI
     src/integration/        the Backend seam and the peony backend
     src/shim/               libpeony-alpha.so, the LD_PRELOAD interposer
-    src/ui/                 the single-page app, embedded at configure time
-    icon/                   the app icon: the 1024 master, and the 256 that ships
-                            (launcher entry, pixmaps, hicolor, favicon)
+    icon/                   the project icon (the README header)
     patches/                the engine patch series
     tests/                  pure-logic tests, plus integration and smoke tests
 

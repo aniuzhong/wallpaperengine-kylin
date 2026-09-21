@@ -47,8 +47,7 @@ void printUsage() {
         "  setup-integration           configure peony injection for a visible desktop\n"
         "  teardown-integration        undo it: restore the wallpaper, unload the shim\n"
         "  doctor                      dump diagnostics for bug reports\n"
-        "  selftest                    config load/save self-test\n"
-        "  ui [--port N] [--no-open]   serve the browser frontend on 127.0.0.1\n",
+        "  selftest                    config load/save self-test\n",
         stdout);
 }
 

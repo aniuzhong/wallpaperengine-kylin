@@ -7,8 +7,7 @@ name: build
 #
 # CI: pull base -> fetch upstream at the pinned commit -> apply patches ->
 # build engine + shim -> assemble deb -> upload artifact. GitHub Releases
-# will be enabled once the UI ships; until then every run only produces a
-# build artifact.
+# are not wired up yet; every run only produces a build artifact.
 
 on:
   push:

@@ -9,9 +9,9 @@
 
 #include <nlohmann/json.hpp>
 
-// The JSON projections of service data: one definition of every wire shape,
-// shared by the CLI (--json) and any other frontend. Shaping JSON inside a
-// frontend is how two frontends end up publishing two contracts.
+// The JSON projections of service data: one definition of every wire shape
+// the CLI publishes with --json. Shaping JSON inside a command handler is
+// how two commands end up publishing two contracts.
 //
 // Every function here is pure — values in, json out. Nothing reaches for
 // the bus, the filesystem or the unit name; callers pass those in.

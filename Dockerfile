@@ -69,7 +69,6 @@ ENV GIT_TERMINAL_PROMPT=0 \
 
 COPY CMakeLists.txt /int/CMakeLists.txt
 COPY src/ /int/src/
-COPY cmake/ /int/cmake/
 COPY patches/ /int/patches/
 
 # One cmake entry for everything: engine (seeded tree) + controller + shim.
@@ -99,10 +98,6 @@ FROM builder AS deb
 ARG DEB_VERSION=0.1.0
 
 COPY packaging/deb /tmp/deb-control
-# the launcher's icon: the size the repo ships for installation (the 1024
-# master next to it is the source these are derived from, not what gets
-# installed — a 700K pixmap for a taskbar entry helps nobody)
-COPY icon/wallpaper-engine-256.png /tmp/deb-control/wallpaper-engine.png
 RUN mkdir -p /deb/DEBIAN /deb/usr/share/doc/wallpaper-engine-kylin \
  && cp /tmp/deb-control/control /deb/DEBIAN/control \
  && sed -i "s/@VERSION@/${DEB_VERSION}/" /deb/DEBIAN/control \
@@ -112,11 +107,6 @@ RUN mkdir -p /deb/DEBIAN /deb/usr/share/doc/wallpaper-engine-kylin \
         fi; \
     done \
  && cp /tmp/deb-control/copyright /deb/usr/share/doc/wallpaper-engine-kylin/copyright \
- && mkdir -p /deb/usr/share/applications /deb/usr/share/pixmaps \
-             /deb/usr/share/icons/hicolor/256x256/apps \
- && cp /tmp/deb-control/io.github.aniuzhong.WallpaperEngine.desktop /deb/usr/share/applications/ \
- && cp /tmp/deb-control/wallpaper-engine.png /deb/usr/share/pixmaps/wallpaper-engine.png \
- && cp /tmp/deb-control/wallpaper-engine.png /deb/usr/share/icons/hicolor/256x256/apps/wallpaper-engine.png \
  && echo "Installed-Size: $(du -sk --apparent-size /deb | cut -f1)" >> /deb/DEBIAN/control \
  && dpkg-deb --build --root-owner-group /deb /pkg.deb
 

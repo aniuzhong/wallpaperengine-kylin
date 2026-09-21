@@ -5,8 +5,8 @@
 
 // Running the engine binary as a child process. The engine is a GL
 // application that also has useful non-rendering modes (--list-properties),
-// and both frontends need them with the same privileges and the same
-// deadline, so the plumbing lives here rather than in a frontend.
+// and the CLI needs them with the same privileges and the same deadline,
+// so the plumbing lives here rather than in a command handler.
 namespace EngineProcess {
 
 // Run |enginePath| with |args|, capturing stdout and stderr (interleaved in
