@@ -9,9 +9,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-namespace EngineProcess {
+namespace engine_process {
 
-int runCaptured(const std::string& enginePath, const std::vector<std::string>& args, long timeoutMs,
+int RunCaptured(const std::string& enginePath, const std::vector<std::string>& args, long timeoutMs,
                 std::string* output, bool* timedOut) {
     if (timedOut != nullptr)
         *timedOut = false;
@@ -102,10 +102,10 @@ int runCaptured(const std::string& enginePath, const std::vector<std::string>& a
     return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
-bool didNotRun(int exitCode) {
+bool DidNotRun(int exitCode) {
     // -1: spawn failed or the deadline killed it. 127: execvp could not run
     // the path at all.
     return exitCode == -1 || exitCode == 127;
 }
 
-} // namespace EngineProcess
+} // namespace engine_process

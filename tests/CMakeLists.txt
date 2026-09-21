@@ -3,9 +3,9 @@
 find_package (Qt5 REQUIRED COMPONENTS Core DBus Test)
 pkg_check_modules (LIBSYSTEMD REQUIRED libsystemd)
 
-add_executable (unitbuilder_test unitbuilder_test.cpp ../src/unitbuilder.cpp)
-target_link_libraries (unitbuilder_test PRIVATE Qt5::Core Qt5::Test)
-add_test (NAME unitbuilder_test COMMAND unitbuilder_test)
+add_executable (exec_args_test exec_args_test.cpp ../src/exec_args.cpp)
+target_link_libraries (exec_args_test PRIVATE Qt5::Core Qt5::Test)
+add_test (NAME exec_args_test COMMAND exec_args_test)
 
 # T0: Config -> argv mapping (pure)
 add_executable (argvbuilder_test argvbuilder_test.cpp ../src/argvbuilder.cpp ../src/config.cpp)
@@ -49,15 +49,15 @@ add_test (NAME service_smoke_test COMMAND service_smoke_test)
 # T3: headless CLI end-to-end against the real user manager (isolated by
 # the dedicated wallpaper-engine-e2e-test unit name; config stays the user's own and is
 # restored by cleanup)
-add_executable (cli_e2e_test cli_e2e_test.cpp ../src/config.cpp ../src/engineunit.cpp ../src/argvbuilder.cpp)
+add_executable (cli_e2e_test cli_e2e_test.cpp ../src/config.cpp ../src/engine_unit.cpp ../src/argvbuilder.cpp)
 target_link_libraries (cli_e2e_test PRIVATE Qt5::Core Qt5::DBus Qt5::Test wallpaper_service)
 target_compile_definitions (cli_e2e_test PRIVATE
     WALLPAPER_ENGINE_BIN="${CMAKE_BINARY_DIR}/wallpaper-engine")
 add_test (NAME cli_e2e_test COMMAND cli_e2e_test)
 
-add_executable (systemdunit_test systemdunit_test.cpp ../src/systemdunit.cpp ../src/unitbuilder.cpp)
-target_link_libraries (systemdunit_test PRIVATE Qt5::Core Qt5::DBus Qt5::Test ${LIBSYSTEMD_LIBRARIES})
-add_test (NAME systemdunit_test COMMAND systemdunit_test)
+add_executable (systemd_unit_test systemd_unit_test.cpp ../src/systemd_unit.cpp ../src/exec_args.cpp)
+target_link_libraries (systemd_unit_test PRIVATE Qt5::Core Qt5::DBus Qt5::Test tl::expected ${LIBSYSTEMD_LIBRARIES})
+add_test (NAME systemd_unit_test COMMAND systemd_unit_test)
 
 # ---- shim interposition coverage ------------------------------------------
 # probe: tiny Qt binary that exercises one shim hook per mode

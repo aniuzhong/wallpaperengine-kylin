@@ -5,7 +5,7 @@
 // link.
 #include "../src/argvbuilder.h"
 #include "../src/library.h"
-#include "../src/unitbuilder.h"
+#include "../src/exec_args.h"
 #include "../src/cli.h"
 
 #include <cstdio>
@@ -14,34 +14,34 @@
 
 int main() {
     // pure systemd-layer logic
-    if (systemd::escapeExecArg("a b") != "\"a b\"") {
-        std::printf("smoke: escapeExecArg failed\n");
+    if (systemd::EscapeExecArg("a b") != "\"a b\"") {
+        std::printf("smoke: EscapeExecArg failed\n");
         return 1;
     }
     const systemd::ExecCommand command =
-        systemd::toExecCommand(std::vector<std::string> { "/bin/tool", "x" });
+        systemd::ToExecCommand(std::vector<std::string> { "/bin/tool", "x" });
     if (command.program != "/bin/tool" || command.args.size() != 2) {
-        std::printf("smoke: toExecCommand failed\n");
+        std::printf("smoke: ToExecCommand failed\n");
         return 1;
     }
 
     // config -> argv mapping off the defaults (empty screens: no screen flags)
     const Config config;
-    const std::vector<std::string> argv = buildArgv(config);
+    const std::vector<std::string> argv = BuildArgv(config);
     if (argv.empty() || argv.front() != config.enginePath) {
-        std::printf("smoke: buildArgv failed\n");
+        std::printf("smoke: BuildArgv failed\n");
         return 1;
     }
 
     // library scan on a nonexistent root degrades to an empty result
-    if (!scanLibrary("/wallpaper-engine-smoke-does-not-exist").empty()) {
-        std::printf("smoke: scanLibrary failed\n");
+    if (!ScanLibrary("/wallpaper-engine-smoke-does-not-exist").empty()) {
+        std::printf("smoke: ScanLibrary failed\n");
         return 1;
     }
 
     // CLI usage path: exercises the command table with no side effects
-    if (runCli({}) != 2) {
-        std::printf("smoke: runCli usage exit failed\n");
+    if (RunCli({}) != 2) {
+        std::printf("smoke: RunCli usage exit failed\n");
         return 1;
     }
 

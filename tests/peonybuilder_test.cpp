@@ -25,53 +25,53 @@ class PeonyBuilderTest : public QObject {
 
 private slots:
     void cmdlineMatchesTheDesktopProcess() {
-        QVERIFY(Peony::isPeonyDesktopCmdline(cmdline({ "/usr/bin/peony-qt-desktop", "-w", "-d" })));
-        QVERIFY(Peony::isPeonyDesktopCmdline(cmdline({ "peony-qt-desktop" })));
+        QVERIFY(peony::IsPeonyDesktopCmdline(cmdline({ "/usr/bin/peony-qt-desktop", "-w", "-d" })));
+        QVERIFY(peony::IsPeonyDesktopCmdline(cmdline({ "peony-qt-desktop" })));
     }
 
     void cmdlineRejectsEverythingElse() {
-        QVERIFY(!Peony::isPeonyDesktopCmdline(cmdline({ "/usr/bin/peony", "--daemon" })));
-        QVERIFY(!Peony::isPeonyDesktopCmdline(""));
+        QVERIFY(!peony::IsPeonyDesktopCmdline(cmdline({ "/usr/bin/peony", "--daemon" })));
+        QVERIFY(!peony::IsPeonyDesktopCmdline(""));
     }
 
     void wallpaperListOrdersPreviousNormalizedMarker() {
         // the order the list was always built in: what the user had, then the
         // path accountsservice normalized the marker to, then the marker
-        QCOMPARE(Peony::buildWallpaperList("/data/marker.png", "/var/lib/AccountsService/backgrounds/x.png",
+        QCOMPARE(peony::BuildWallpaperList("/data/marker.png", "/var/lib/AccountsService/backgrounds/x.png",
                                                    "/old/wall.png"),
                   std::string("/old/wall.png:/var/lib/AccountsService/backgrounds/x.png:/data/marker.png"));
     }
 
     void wallpaperListDropsEmptyAndRepeatedEntries() {
-        QCOMPARE(Peony::buildWallpaperList("/m.png", "", ""), std::string("/m.png"));
+        QCOMPARE(peony::BuildWallpaperList("/m.png", "", ""), std::string("/m.png"));
         // accountsservice handed back the marker itself: one entry, not two
-        QCOMPARE(Peony::buildWallpaperList("/m.png", "/m.png", ""), std::string("/m.png"));
+        QCOMPARE(peony::BuildWallpaperList("/m.png", "/m.png", ""), std::string("/m.png"));
         // the accountsservice write failed: the previous wallpaper is the
         // only other candidate the shim may be asked about
-        QCOMPARE(Peony::buildWallpaperList("/m.png", "", "/old.png"), std::string("/old.png:/m.png"));
+        QCOMPARE(peony::BuildWallpaperList("/m.png", "", "/old.png"), std::string("/old.png:/m.png"));
     }
 
     void wallpaperListKeepsPathsThatMerelyContainEachOther() {
         // the substring test this replaced dropped the shorter path whenever
         // it happened to appear inside a longer one; the shim compares whole
         // paths, so both candidates must survive
-        QCOMPARE(Peony::buildWallpaperList("/a/b.png.bak", "", "/a/b.png"),
+        QCOMPARE(peony::BuildWallpaperList("/a/b.png.bak", "", "/a/b.png"),
                   std::string("/a/b.png:/a/b.png.bak"));
     }
 
     void firstWallpaperIsTheOneTheDesktopHad() {
-        // the order buildWallpaperList produces: previous, normalized, marker
-        QCOMPARE(Peony::firstWallpaperIn("/old/wall.png:/var/lib/AccountsService/backgrounds/x.png:/data/m.png"),
+        // the order BuildWallpaperList produces: previous, normalized, marker
+        QCOMPARE(peony::FirstWallpaperIn("/old/wall.png:/var/lib/AccountsService/backgrounds/x.png:/data/m.png"),
                   std::string("/old/wall.png"));
-        QCOMPARE(Peony::firstWallpaperIn("/only.png"), std::string("/only.png"));
-        QCOMPARE(Peony::firstWallpaperIn(""), std::string());
+        QCOMPARE(peony::FirstWallpaperIn("/only.png"), std::string("/only.png"));
+        QCOMPARE(peony::FirstWallpaperIn(""), std::string());
     }
 
     void shimEnvironmentCarriesTheContractVariables() {
         // the log destination is not in the environment: shim logging is
         // always on and resolves its own per-user destination
         const std::map<std::string, std::string> env =
-            Peony::buildShimEnvironment("/opt/wallpaper-engine/lib/libpeony-alpha.so", "/a.png:/b.png");
+            peony::BuildShimEnvironment("/opt/wallpaper-engine/lib/libpeony-alpha.so", "/a.png:/b.png");
 
         QCOMPARE(env.size(), size_t(2));
         QCOMPARE(env.at("LD_PRELOAD"), std::string("/opt/wallpaper-engine/lib/libpeony-alpha.so"));

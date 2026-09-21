@@ -1,9 +1,9 @@
-#include "engineunit.h"
+#include "engine_unit.h"
 
 #include "argvbuilder.h"
 #include "posix.h"
-#include "unitbuilder.h"
-#include "systemdunit.h"
+#include "exec_args.h"
+#include "systemd_unit.h"
 
 #include <xcb/xcb.h>
 #include <xcb/randr.h>
@@ -20,14 +20,36 @@ namespace fs = std::filesystem;
 namespace {
 
 // overridable for tests (WALLPAPER_ENGINE_UNIT=<name>)
-std::string unitNameFromEnv() {
-    static const std::string name = wallpaper_engine::envOr("WALLPAPER_ENGINE_UNIT", "wallpaper-engine");
+std::string UnitNameFromEnv() {
+    static const std::string name = wallpaper_engine::EnvOr("WALLPAPER_ENGINE_UNIT", "wallpaper-engine");
     return name;
+}
+
+// Bridge from the systemd module's Result to this facade's bool-plus-slot
+// convention: on failure the error is moved into |error| when given.
+bool Assign(wallpaper_engine::Error* error, systemd::Result<void>&& result) {
+    if (result)
+        return true;
+    if (error != nullptr)
+        *error = std::move(result).error();
+    return false;
+}
+
+// The facade opens the connection, the operation functions take it from
+// there: one bus per CLI command, passed down.
+std::optional<systemd::Connection> OpenBus(wallpaper_engine::Error* error) {
+    auto connection = systemd::Connection::UserBus();
+    if (!connection) {
+        if (error != nullptr)
+            *error = std::move(connection).error();
+        return std::nullopt;
+    }
+    return std::move(connection).value();
 }
 
 // The output RandR calls primary, when it is actually driven. Empty when the
 // server has no opinion or the primary is disconnected.
-std::string primaryOutputName(xcb_connection_t* connection, const xcb_screen_t* screen) {
+std::string PrimaryOutputName(xcb_connection_t* connection, const xcb_screen_t* screen) {
     if (screen == nullptr)
         return {};
     std::string name;
@@ -47,7 +69,7 @@ std::string primaryOutputName(xcb_connection_t* connection, const xcb_screen_t* 
 
 // Every output with a crtc: an unconnected connector has none, and the
 // engine cannot render where there is no crtc.
-std::vector<std::string> drivenOutputs(xcb_connection_t* connection, const xcb_screen_t* screen) {
+std::vector<std::string> DrivenOutputs(xcb_connection_t* connection, const xcb_screen_t* screen) {
     std::vector<std::string> names;
     if (screen == nullptr)
         return names;
@@ -73,26 +95,26 @@ std::vector<std::string> drivenOutputs(xcb_connection_t* connection, const xcb_s
 
 } // namespace
 
-namespace EngineUnit {
+namespace engine_unit {
 
-std::string unitName() { return unitNameFromEnv(); }
+std::string UnitName() { return UnitNameFromEnv(); }
 
-std::string unitPath() {
+std::string UnitPath() {
     // deliberately $HOME-based (not XDG): the USER systemd manager must see
     // this exact file, so XDG overrides from test shells must not relocate
     // it. Tests isolate themselves by unit name instead.
-    return wallpaper_engine::homeDir() + "/.config/systemd/user/" + unitNameFromEnv() + ".service";
+    return wallpaper_engine::HomeDir() + "/.config/systemd/user/" + UnitNameFromEnv() + ".service";
 }
 
-std::string unitFileContent(const Config& config) {
-    // systemd ExecStart quoting: escapeExecArg quotes arguments containing
+std::string UnitFileContent(const Config& config) {
+    // systemd ExecStart quoting: EscapeExecArg quotes arguments containing
     // whitespace and doubles "$"/"%" so systemd's substitution does not eat
-    // them; unitBackgrounds() inverts exactly this escaping
+    // them; UnitBackgrounds() inverts exactly this escaping
     std::string exec;
-    for (const std::string& arg : buildArgv(config)) {
+    for (const std::string& arg : BuildArgv(config)) {
         if (!exec.empty())
             exec += ' ';
-        exec += systemd::escapeExecArg(arg);
+        exec += systemd::EscapeExecArg(arg);
     }
 
     // persist the XAUTHORITY path this session actually uses: sddm/gdm keep
@@ -123,15 +145,15 @@ std::string unitFileContent(const Config& config) {
            "WantedBy=graphical-session.target\n";
 }
 
-std::map<std::string, std::string> unitBackgrounds() {
+std::map<std::string, std::string> UnitBackgrounds() {
     std::map<std::string, std::string> result;
-    std::ifstream file(unitPath());
+    std::ifstream file(UnitPath());
     if (!file.is_open())
         return result;
 
     // the unit file is what systemd actually runs; parse its ExecStart so
-    // status reflects reality even after manual unit edits. parseExecArgs
-    // inverts the escaping unitFileContent applied.
+    // status reflects reality even after manual unit edits. ParseExecArgs
+    // inverts the escaping UnitFileContent applied.
     std::string content { std::istreambuf_iterator<char> (file), std::istreambuf_iterator<char> () };
     constexpr const char* execKey = "ExecStart=";
     size_t lineStart = 0;
@@ -144,7 +166,7 @@ std::map<std::string, std::string> unitBackgrounds() {
         if (line.rfind(execKey, 0) != 0)
             continue;
 
-        const std::vector<std::string> args = systemd::parseExecArgs(line.substr(std::strlen(execKey)));
+        const std::vector<std::string> args = systemd::ParseExecArgs(line.substr(std::strlen(execKey)));
         std::string screen;
         for (size_t i = 0; i < args.size(); i++) {
             if (args[i] == "--screen-root" && i + 1 < args.size())
@@ -157,63 +179,64 @@ std::map<std::string, std::string> unitBackgrounds() {
     return result;
 }
 
-bool writeUnitFile(const Config& config, wallpaper_engine::Error* error) {
-    const std::string path = unitPath();
+bool WriteUnitFile(const Config& config, wallpaper_engine::Error* error) {
+    const std::string path = UnitPath();
     std::error_code ec;
     fs::create_directories(fs::path(path).parent_path(), ec);
     // atomic like the config: systemd must never read a half-written unit
-    return wallpaper_engine::writeFileAtomic(path, unitFileContent(config), error);
+    return wallpaper_engine::WriteFileAtomic(path, UnitFileContent(config), error);
 }
 
 // every lifecycle operation goes through the typed sd-bus layer — the
 // manager is addressed directly on the session bus, no systemctl subprocesses
-bool daemonReload(wallpaper_engine::Error* error) {
-    wallpaper_engine::Error local;
-    systemd::daemonReload(&local);
-    if (error != nullptr)
-        *error = local;
-    return local.ok();
+bool DaemonReload(wallpaper_engine::Error* error) {
+    auto bus = OpenBus(error);
+    return bus && Assign(error, systemd::DaemonReload(*bus));
 }
 
-bool startUnit(wallpaper_engine::Error* error) {
-    systemd::SystemdUnit unit(unitNameFromEnv());
-    wallpaper_engine::Error local;
-    unit.start(&local);
-    if (error != nullptr)
-        *error = local;
-    return local.ok();
+bool StartUnit(wallpaper_engine::Error* error) {
+    auto bus = OpenBus(error);
+    return bus && Assign(error, systemd::Start(*bus, UnitNameFromEnv()));
 }
 
-bool restartUnit(wallpaper_engine::Error* error) {
-    systemd::SystemdUnit unit(unitNameFromEnv());
-    wallpaper_engine::Error local;
-    unit.restart(&local);
-    if (error != nullptr)
-        *error = local;
-    return local.ok();
+bool RestartUnit(wallpaper_engine::Error* error) {
+    auto bus = OpenBus(error);
+    return bus && Assign(error, systemd::Restart(*bus, UnitNameFromEnv()));
 }
 
-bool stopUnit(wallpaper_engine::Error* error) {
-    systemd::SystemdUnit unit(unitNameFromEnv());
+bool StopUnit(wallpaper_engine::Error* error) {
+    auto bus = OpenBus(error);
+    if (!bus)
+        return false;
     wallpaper_engine::Error local;
-    unit.stop(&local);
+    Assign(&local, systemd::Stop(*bus, UnitNameFromEnv()));
     // stop/reset-failed on a unit that was never loaded already has the
     // desired end state: systemd reports NoSuchUnit ("not loaded",
     // systemctl's old exit code 5). Treat it as success — keeps the CLI
     // idempotent for scripting.
-    if (systemd::tolerated(local))
+    if (systemd::Tolerated(local))
         local = {};
     if (error != nullptr)
         *error = local;
-    return local.ok();
+    return local.Ok();
 }
 
-std::string unitState(wallpaper_engine::Error* error) {
-    systemd::SystemdUnit unit(unitNameFromEnv());
-    return unit.activeState(error);
+std::string UnitState(wallpaper_engine::Error* error) {
+    auto bus = OpenBus(error);
+    if (!bus)
+        return "unknown";
+    auto state = systemd::ActiveState(*bus, UnitNameFromEnv());
+    if (!state) {
+        if (error != nullptr)
+            *error = std::move(state).error();
+        return "unknown";
+    }
+    // a not-loaded unit presents as inactive: the status contract predates
+    // the distinction, and scripts compare the old token
+    return systemd::UnitStateName(state->value_or(systemd::UnitState::Inactive));
 }
 
-std::string fallbackScreenName() {
+std::string FallbackScreenName() {
     // the engine renders on X11, so the name must come from the X server's
     // own RandR view — not from a frontend's QPA platform (a Wayland-session
     // GUI would report output names the engine cannot match). "DP-0" stays
@@ -226,14 +249,14 @@ std::string fallbackScreenName() {
     }
 
     const std::string primary =
-        primaryOutputName(connection, xcb_setup_roots_iterator(xcb_get_setup(connection)).data);
+        PrimaryOutputName(connection, xcb_setup_roots_iterator(xcb_get_setup(connection)).data);
     if (!primary.empty())
         name = primary;
     xcb_disconnect(connection);
     return name;
 }
 
-std::vector<std::string> screenNames() {
+std::vector<std::string> ScreenNames() {
     xcb_connection_t* connection = xcb_connect(nullptr, nullptr);
     if (xcb_connection_has_error(connection)) {
         xcb_disconnect(connection);
@@ -241,21 +264,21 @@ std::vector<std::string> screenNames() {
     }
 
     const xcb_screen_t* screen = xcb_setup_roots_iterator(xcb_get_setup(connection)).data;
-    std::vector<std::string> names = drivenOutputs(connection, screen);
-    const std::string primary = primaryOutputName(connection, screen);
+    std::vector<std::string> names = DrivenOutputs(connection, screen);
+    const std::string primary = PrimaryOutputName(connection, screen);
     xcb_disconnect(connection);
 
     if (names.empty())
         return { "DP-0" };
     // primary first: a caller that just takes front() gets the desktop's own
-    // idea of the main screen, which is also what defaultScreenFor prefers
+    // idea of the main screen, which is also what DefaultScreenFor prefers
     const auto it = std::find(names.begin(), names.end(), primary);
     if (it != names.end())
         std::rotate(names.begin(), it, it + 1);
     return names;
 }
 
-std::string defaultScreenFor(const Config& config, const std::string& primaryOutput) {
+std::string DefaultScreenFor(const Config& config, const std::string& primaryOutput) {
     if (config.screens.count(primaryOutput) != 0)
         return primaryOutput; // the desktop already drives it
     if (config.screens.size() == 1)
@@ -263,7 +286,7 @@ std::string defaultScreenFor(const Config& config, const std::string& primaryOut
     return primaryOutput; // fresh config, or a multi-screen one without the primary
 }
 
-Config assignScreen(Config config, const std::string& screen, const std::string& wallpaperId) {
+Config AssignScreen(Config config, const std::string& screen, const std::string& wallpaperId) {
     // a screens[""] entry would be unmatchable by the engine: leave the
     // config untouched rather than write one
     if (screen.empty() || wallpaperId.empty())
@@ -272,16 +295,29 @@ Config assignScreen(Config config, const std::string& screen, const std::string&
     return config;
 }
 
-bool applyConfig(const Config& config, wallpaper_engine::Error* error) {
+bool ApplyConfig(const Config& config, wallpaper_engine::Error* error) {
     // the one apply chain: persist the draft, project it into the unit file
     // the manager runs, reload, restart. The first failing step is the one
-    // |error| describes.
+    // |error| describes. One bus connection spans the whole chain — the
+    // shell opens it, the operations take it from there.
     wallpaper_engine::Error local;
-    const bool ok = config.save(&local) && writeUnitFile(config, &local) && daemonReload(&local) &&
-                    restartUnit(&local);
+    if (!config.Save(&local) || !WriteUnitFile(config, &local)) {
+        if (error != nullptr)
+            *error = local;
+        return false;
+    }
+
+    auto bus = OpenBus(&local);
+    if (!bus) {
+        if (error != nullptr)
+            *error = local;
+        return false;
+    }
+    const bool ok = Assign(&local, systemd::DaemonReload(*bus)) &&
+                    Assign(&local, systemd::Restart(*bus, UnitNameFromEnv()));
     if (error != nullptr)
         *error = ok ? wallpaper_engine::Error {} : local;
     return ok;
 }
 
-} // namespace EngineUnit
+} // namespace engine_unit

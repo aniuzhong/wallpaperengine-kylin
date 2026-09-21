@@ -24,4 +24,4 @@ struct WallpaperEntry {
 // project.json are skipped; entries are sorted by title. Decoding and any
 // other presentation work belongs to the CLI: it gets paths and
 // numbers, never images.
-std::vector<WallpaperEntry> scanLibrary(const std::string& workshopDir);
+std::vector<WallpaperEntry> ScanLibrary(const std::string& workshopDir);

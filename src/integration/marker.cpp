@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-namespace Marker {
+namespace marker {
 namespace {
 
 // Win10 blue, stored the way BMP stores pixels: little-endian BGR.
@@ -193,7 +193,7 @@ std::string encodeBmp(const std::vector<unsigned char>& px, int width, int heigh
 
 } // namespace
 
-std::string renderBmp(int width, int height) {
+std::string RenderBmp(int width, int height) {
     // integer scale from the resolution: 4K -> 6x, 1080p -> 3x, floor 1x
     const int scale = std::max(1, std::min(width / 640, height / 360));
     const int margin = 20 * scale;
@@ -232,8 +232,8 @@ std::string renderBmp(int width, int height) {
     return encodeBmp(px, width, height);
 }
 
-bool writeTo(const std::string& path, int width, int height) {
-    return wallpaper_engine::writeFileAtomic(path, renderBmp(width, height));
+bool WriteTo(const std::string& path, int width, int height) {
+    return wallpaper_engine::WriteFileAtomic(path, RenderBmp(width, height));
 }
 
-} // namespace Marker
+} // namespace marker

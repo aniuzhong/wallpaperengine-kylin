@@ -14,7 +14,7 @@ class MarkerTest : public QObject {
 
 private slots:
     void bmpIsWellFormed() {
-        const std::string bmp = Marker::renderBmp(320, 200);
+        const std::string bmp = marker::RenderBmp(320, 200);
         QVERIFY(bmp.size() > 54);
         QVERIFY(std::memcmp(bmp.data(), "BM", 2) == 0);
 
@@ -31,7 +31,7 @@ private slots:
     }
 
     void backgroundAndInkArePresent() {
-        const std::string bmp = Marker::renderBmp(320, 200);
+        const std::string bmp = marker::RenderBmp(320, 200);
         // BMP rows are bottom-up: the first pixel row in file order is the
         // image's top row, and its first pixel must be the blue background
         const auto* pixels = reinterpret_cast<const unsigned char*>(bmp.data()) + 54;
@@ -50,7 +50,7 @@ private slots:
     }
 
     void renderIsDeterministic() {
-        QCOMPARE(Marker::renderBmp(320, 200), Marker::renderBmp(320, 200));
+        QCOMPARE(marker::RenderBmp(320, 200), marker::RenderBmp(320, 200));
     }
 };
 

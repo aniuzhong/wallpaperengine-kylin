@@ -1,8 +1,8 @@
-// Integration tests for SystemdUnit: real systemd user manager on the
-// session bus. Skips automatically when no user bus is available (e.g. CI
-// without enable-linger). Every unit created here uses the isolated
+// integration tests for the systemd module: real systemd user manager on
+// the session bus. Skips automatically when no user bus is available (e.g.
+// CI without enable-linger). Every unit created here uses the isolated
 // "wallpaper-engine-test-" prefix and is stopped/removed afterwards.
-#include "../src/systemdunit.h"
+#include "../src/systemd_unit.h"
 
 #include <QDBusConnection>
 #include <QDBusVariant>
@@ -16,6 +16,7 @@
 #include <csignal>
 #include <fcntl.h>
 #include <memory>
+#include <optional>
 #include <unistd.h>
 
 
@@ -23,8 +24,8 @@ using namespace systemd;
 
 namespace {
 // the unit object path the manager derives from the id ('-' -> _2d, '.' -> _2e)
-QString unitPathFor(const std::string& unitName) {
-    return QString::fromStdString(unitName).replace('-', "_2d").replace('.', "_2e");
+QString unitPathFor(const std::string& UnitName) {
+    return QString::fromStdString(UnitName).replace('-', "_2d").replace('.', "_2e");
 }
 } // namespace
 
@@ -41,16 +42,21 @@ private slots:
         call.setArguments({ "org.freedesktop.systemd1.Manager", "Version" });
         if (QDBusConnection::sessionBus().call(call).type() == QDBusMessage::ErrorMessage)
             QSKIP("systemd user manager not reachable on the session bus");
+
+        auto bus = Connection::UserBus();
+        if (!bus)
+            QSKIP("sd-bus cannot open the user bus");
+        bus_.emplace(std::move(bus).value());
     }
 
     void init() {
         // fresh random name per test so tests never share state
         m_name = "wallpaper-engine-test-" + std::to_string(QRandomGenerator::global()->bounded(100000, 999999)) + ".service";
-        m_unit = std::make_unique<SystemdUnit> (m_name);
     }
 
     void cleanup() {
-        m_unit->stop();
+        if (bus_)
+            (void)systemd::Stop(*bus_, m_name);
         QFile unitFile(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
                         "/systemd/user/" + QString::fromStdString(m_name));
         QFile::remove(unitFile.fileName());
@@ -64,10 +70,12 @@ private slots:
                              "/systemd/user/" + QString::fromStdString(m_name);
         QVERIFY(QFile::exists(path));
 
-        wallpaper_engine::Error error;
-        const std::string state = m_unit->activeState(&error);
-        QCOMPARE(error.kind, wallpaper_engine::Error::NoError); // unit is loaded once installed
-        QVERIFY(state == "inactive" || state == "active" || state == "failed");
+        // installed ⇒ loaded: a real state comes back, not the not-loaded
+        // nullopt
+        auto state = systemd::ActiveState(*bus_, m_name);
+        QVERIFY(state.has_value());
+        QVERIFY(state->has_value());
+        QVERIFY(**state == UnitState::Inactive || **state == UnitState::Active || **state == UnitState::Failed);
     }
 
     void installUnitFile_textSurvivesRoundtrip() {
@@ -85,41 +93,43 @@ private slots:
     void lifecycle_startStopRestart() {
         QVERIFY(installUnitFile(sleepUnitContent()));
 
-        QVERIFY(m_unit->start());
-        QTRY_COMPARE(m_unit->activeState(), std::string("active"));
+        QVERIFY(systemd::Start(*bus_, m_name).has_value());
+        QTRY_VERIFY(stateNow() == UnitState::Active);
 
-        QVERIFY(m_unit->stop());
-        QTRY_COMPARE(m_unit->activeState(), std::string("inactive"));
+        QVERIFY(systemd::Stop(*bus_, m_name).has_value());
+        QTRY_VERIFY(stateNow() == UnitState::Inactive);
 
-        QVERIFY(m_unit->restart());
-        QTRY_COMPARE(m_unit->activeState(), std::string("active"));
+        QVERIFY(systemd::Restart(*bus_, m_name).has_value());
+        QTRY_VERIFY(stateNow() == UnitState::Active);
 
-        QVERIFY(m_unit->stop());
+        QVERIFY(systemd::Stop(*bus_, m_name).has_value());
     }
 
     void selfHeal_onMainProcessKill() {
         QVERIFY(installUnitFile(selfHealUnitContent()));
 
-        QVERIFY(m_unit->start());
-        QTRY_COMPARE(m_unit->activeState(), std::string("active"));
+        QVERIFY(systemd::Start(*bus_, m_name).has_value());
+        QTRY_VERIFY(stateNow() == UnitState::Active);
         const qint64 firstPid = mainPid();
         QVERIFY(firstPid > 0);
 
         kill(firstPid, SIGKILL);
 
         // Restart=on-failure must bring the unit back with a fresh pid
-        QTRY_VERIFY_WITH_TIMEOUT(mainPid() > 0 && mainPid() != firstPid && m_unit->isActive(), 15000);
-        QVERIFY(m_unit->stop());
+        QTRY_VERIFY_WITH_TIMEOUT(mainPid() > 0 && mainPid() != firstPid && stateNow() == UnitState::Active, 15000);
+        QVERIFY(systemd::Stop(*bus_, m_name).has_value());
     }
 
     // ---- transient units (the peony injection mechanism) -------------------
 
     void transient_environmentIsInjected() {
-        std::map<std::string, std::string> env;
-        env["LWE_TEST_MARKER"] = "present";
-        QVERIFY(m_unit->startTransient(std::vector<std::string> { "/bin/sleep", "3600" }, env, {}));
+        TransientSpec spec;
+        spec.unit = m_name;
+        spec.argv = { "/bin/sleep", "3600" };
+        spec.environment = { { "LWE_TEST_MARKER", "present" } };
+        QVERIFY(systemd::StartTransient(*bus_, spec).has_value());
 
-        QTRY_COMPARE(m_unit->activeState(), std::string("active"));
+        QTRY_VERIFY(stateNow() == UnitState::Active);
         // ActiveState flips at fork; the unit Environment lands on the
         // process at execve microseconds later — poll, don't single-read
         bool envApplied = false;
@@ -148,7 +158,7 @@ private slots:
         QVERIFY2(envApplied, "transient Environment never reached the process environ");
 
         QDBusMessage envGet = QDBusMessage::createMethodCall(
-            "org.freedesktop.systemd1", "/org/freedesktop/systemd1/unit/" + unitPathFor(m_unit->unitName()),
+            "org.freedesktop.systemd1", "/org/freedesktop/systemd1/unit/" + unitPathFor(m_name),
             "org.freedesktop.DBus.Properties", "Get");
         envGet.setArguments({ "org.freedesktop.systemd1.Service", "Environment" });
         const QDBusMessage envReply = QDBusConnection::sessionBus().call(envGet);
@@ -156,15 +166,15 @@ private slots:
         qWarning() << "DIAG unit Environment property meta:" << envValue.typeName()
                     << "content:" << envValue.toStringList();
 
-        QVERIFY(m_unit->stop());
+        QVERIFY(systemd::Stop(*bus_, m_name).has_value());
     }
 
     // ---- error paths --------------------------------------------------------
 
     void error_stopNonexistentUnitIsTyped() {
-        SystemdUnit ghost("wallpaper-engine-test-nonexistent-does-not-exist.service");
-        wallpaper_engine::Error error;
-        ghost.stop(&error);
+        auto result = systemd::Stop(*bus_, "wallpaper-engine-test-nonexistent-does-not-exist.service");
+        QVERIFY(!result.has_value());
+        const wallpaper_engine::Error error = std::move(result).error();
         QVERIFY(error.kind != wallpaper_engine::Error::NoError);
         QVERIFY(!error.dbusName.empty());
         QVERIFY(!error.message.empty());
@@ -174,10 +184,12 @@ private slots:
         // THE injection-persistence guarantee: killing the main process must
         // bring the transient unit back WITH its environment (the peony
         // LD_PRELOAD chain survives crashes by construction)
-        std::map<std::string, std::string> env;
-        env["LWE_TEST_MARKER"] = "present";
-        QVERIFY(m_unit->startTransient(std::vector<std::string> { "/bin/sleep", "3600" }, env, {}));
-        QTRY_COMPARE(m_unit->activeState(), std::string("active"));
+        TransientSpec spec;
+        spec.unit = m_name;
+        spec.argv = { "/bin/sleep", "3600" };
+        spec.environment = { { "LWE_TEST_MARKER", "present" } };
+        QVERIFY(systemd::StartTransient(*bus_, spec).has_value());
+        QTRY_VERIFY(stateNow() == UnitState::Active);
         const qint64 firstPid = mainPid();
         QVERIFY(firstPid > 0);
 
@@ -187,7 +199,7 @@ private slots:
         qint64 newPid = 0;
         for (int waited = 0; waited < 10000 && !restarted; waited += 200) {
             newPid = mainPid();
-            restarted = newPid > 0 && newPid != firstPid && m_unit->isActive();
+            restarted = newPid > 0 && newPid != firstPid && stateNow() == UnitState::Active;
             if (!restarted)
                 QThread::msleep(200);
         }
@@ -213,24 +225,33 @@ private slots:
         }
         QVERIFY(envContent.contains("LWE_TEST_MARKER"));
 
-        QVERIFY(m_unit->stop());
+        QVERIFY(systemd::Stop(*bus_, m_name).has_value());
     }
 
     void resetFailed_onUnknownUnitIsHarmless() {
-        QVERIFY(m_unit->resetFailed());
+        QVERIFY(systemd::ResetFailed(*bus_, m_name).has_value());
     }
 
     void transient_rejectsEmptyArgv() {
-        wallpaper_engine::Error error;
-        QVERIFY(!m_unit->startTransient({}, {}, {}, &error));
-        QCOMPARE(error.kind, wallpaper_engine::Error::InvalidInput);
+        TransientSpec spec;
+        spec.unit = m_name;
+        auto result = systemd::StartTransient(*bus_, spec);
+        QVERIFY(!result.has_value());
+        QCOMPARE(result.error().kind, wallpaper_engine::Error::InvalidInput);
     }
 
     // ---- helpers -------------------------------------------------------------
 
 private:
-    // test-local stand-in for the removed SystemdUnit::installUnitFile:
-    // write the unit file where the user manager looks and reload it
+    // the unit's state as the tests compare it: Unknown covers both a failed
+    // bus round trip and a unit that is not loaded
+    UnitState stateNow() {
+        const auto state = systemd::ActiveState(*bus_, m_name);
+        return (state && state->has_value()) ? **state : UnitState::Unknown;
+    }
+
+    // test-local stand-in for a unit-file installer: write the unit file
+    // where the user manager looks and reload it
     bool installUnitFile(const std::string& content) {
         const QString dir = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
                             "/systemd/user";
@@ -240,7 +261,7 @@ private:
             return false;
         file.write(content.c_str(), qint64(content.size()));
         file.close();
-        return systemd::daemonReload();
+        return systemd::DaemonReload(*bus_).has_value();
     }
 
     static std::string selfHealUnitContent() {
@@ -271,7 +292,7 @@ private:
 
     qint64 mainPid() const {
         QDBusMessage call = QDBusMessage::createMethodCall(
-            "org.freedesktop.systemd1", "/org/freedesktop/systemd1/unit/" + unitPathFor(m_unit->unitName()),
+            "org.freedesktop.systemd1", "/org/freedesktop/systemd1/unit/" + unitPathFor(m_name),
             "org.freedesktop.DBus.Properties", "Get");
         call.setArguments({ "org.freedesktop.systemd1.Service", "ExecMainPID" });
         const QDBusMessage reply = QDBusConnection::sessionBus().call(call);
@@ -281,8 +302,8 @@ private:
     }
 
     std::string m_name;
-    std::unique_ptr<SystemdUnit> m_unit;
+    std::optional<Connection> bus_;
 };
 
 QTEST_MAIN(SystemdUnitTest)
-#include "systemdunit_test.moc"
+#include "systemd_unit_test.moc"

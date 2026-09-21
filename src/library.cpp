@@ -44,7 +44,7 @@ bool titleLess(const WallpaperEntry& a, const WallpaperEntry& b) {
 
 } // namespace
 
-std::vector<WallpaperEntry> scanLibrary(const std::string& workshopDir) {
+std::vector<WallpaperEntry> ScanLibrary(const std::string& workshopDir) {
     std::vector<WallpaperEntry> entries;
 
     std::error_code ec;

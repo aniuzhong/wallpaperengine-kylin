@@ -4,7 +4,7 @@
 // lifecycle assertions are hermetic: they need a session bus and nothing
 // else. The user's own config file is backed up wholesale and restored.
 #include "../src/config.h"
-#include "../src/engineunit.h"
+#include "../src/engine_unit.h"
 
 #include <QDBusConnection>
 #include <QDir>
@@ -21,7 +21,7 @@ namespace {
 constexpr const char* kTestUnit = "wallpaper-engine-e2e-test";
 constexpr const char* kTestWallpaper = "843532366";
 
-QString unitState(const QString& unit) {
+QString UnitState(const QString& unit) {
     QProcess process;
     process.start("systemctl", QStringList { "--user", "is-active", unit });
     process.waitForFinished(10000);
@@ -34,7 +34,7 @@ struct CliResult {
     QByteArray stderrBytes;
 };
 
-CliResult runCli(const QStringList& args) {
+CliResult RunCli(const QStringList& args) {
     QProcess cli;
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert("WALLPAPER_ENGINE_UNIT", kTestUnit);
@@ -63,7 +63,7 @@ private slots:
 
         // back up the user's config wholesale; cleanupTestCase puts the
         // exact bytes back (or removes the file when there was none)
-        const QString configPath = QString::fromStdString(Config::configPath());
+        const QString configPath = QString::fromStdString(Config::ConfigPath());
         QFile configFile(configPath);
         m_configExisted = configFile.exists();
         if (m_configExisted && configFile.open(QIODevice::ReadOnly))
@@ -71,7 +71,7 @@ private slots:
 
         // the same fallback the CLI itself uses: both this test process and
         // the CLI subprocess are headless, so they resolve identically
-        m_screen = QString::fromStdString(EngineUnit::fallbackScreenName());
+        m_screen = QString::fromStdString(engine_unit::FallbackScreenName());
 
         // the test process itself must address the SAME unit as the CLI
         // subprocesses it spawns
@@ -99,11 +99,11 @@ private slots:
             project.write("{\"title\": \"e2e stub\", \"type\": \"scene\"}\n");
         }
 
-        Config config = Config::load();
+        Config config = Config::Load();
         config.enginePath = stub.toStdString();
         config.workshopDir = workshop;
         config.screens.clear();
-        QVERIFY(config.save());
+        QVERIFY(config.Save());
 
         QProcess::execute("systemctl", QStringList { "--user", "stop", kTestUnit });
         QProcess::execute("systemctl", QStringList { "--user", "reset-failed", kTestUnit });
@@ -112,20 +112,20 @@ private slots:
     // one continuous flow: the unit must stay up across CLI invocations —
     // a per-test cleanup stop here would break the following assertions
     void cli_lifecycle_end_to_end() {
-        const CliResult switched = runCli({ "switch", kTestWallpaper });
+        const CliResult switched = RunCli({ "switch", kTestWallpaper });
         if (switched.exitCode != 0)
             qWarning() << "switch failed:" << switched.stdoutBytes << switched.stderrBytes;
         QCOMPARE(switched.exitCode, 0);
 
         // unit file updated, loaded by the manager and running
-        QFile unit(QString::fromStdString(EngineUnit::unitPath()));
+        QFile unit(QString::fromStdString(engine_unit::UnitPath()));
         QVERIFY(unit.exists());
         QVERIFY(unit.open(QIODevice::ReadOnly));
         QVERIFY(QString::fromUtf8(unit.readAll()).contains("--bg " + QString(kTestWallpaper)));
-        QTRY_COMPARE(unitState(kTestUnit), QString("active"));
+        QTRY_COMPARE(UnitState(kTestUnit), QString("active"));
 
         // config.json persisted the switch
-        const Config afterSwitch = Config::load();
+        const Config afterSwitch = Config::Load();
         const auto selected = afterSwitch.screens.find(m_screen.toStdString());
         QVERIFY(selected != afterSwitch.screens.end());
         QCOMPARE(QString::fromStdString(selected->second), QString(kTestWallpaper));
@@ -134,7 +134,7 @@ private slots:
         // active/inactive state is covered by the pause/resume cycle below
         // (the engine pauses itself on fullscreen, which makes a strict
         // state assert racy)
-        const CliResult statusOut = runCli({ "status", "--json" });
+        const CliResult statusOut = RunCli({ "status", "--json" });
         QCOMPARE(statusOut.exitCode, 0);
         const QJsonObject status =
             QJsonDocument::fromJson(statusOut.stdoutBytes).object().value("status").toObject();
@@ -143,11 +143,11 @@ private slots:
         QCOMPARE(status.value("screens").toObject().value(m_screen).toString(), kTestWallpaper);
 
         // pause/resume cycle: the unit comes back with the SAME wallpaper
-        QVERIFY(runCli({ "pause" }).exitCode == 0);
-        QTRY_COMPARE(unitState(kTestUnit), QString("inactive"));
-        QVERIFY(runCli({ "resume" }).exitCode == 0);
-        QTRY_COMPARE(unitState(kTestUnit), QString("active"));
-        QFile unitAfterResume(QString::fromStdString(EngineUnit::unitPath()));
+        QVERIFY(RunCli({ "pause" }).exitCode == 0);
+        QTRY_COMPARE(UnitState(kTestUnit), QString("inactive"));
+        QVERIFY(RunCli({ "resume" }).exitCode == 0);
+        QTRY_COMPARE(UnitState(kTestUnit), QString("active"));
+        QFile unitAfterResume(QString::fromStdString(engine_unit::UnitPath()));
         QVERIFY(unitAfterResume.open(QIODevice::ReadOnly));
         QVERIFY(QString::fromUtf8(unitAfterResume.readAll()).contains("--bg " + QString(kTestWallpaper)));
     }
@@ -159,7 +159,7 @@ private slots:
 
     void cleanupTestCase() {
         // put the user's config back exactly as it was
-        const QString configPath = QString::fromStdString(Config::configPath());
+        const QString configPath = QString::fromStdString(Config::ConfigPath());
         if (!m_configExisted) {
             QFile::remove(configPath);
             return;

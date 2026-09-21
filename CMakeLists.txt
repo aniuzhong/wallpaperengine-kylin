@@ -25,6 +25,17 @@ FetchContent_Declare(nlohmann_json
     GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(nlohmann_json)
 
+# Result<T, E> for the systemd module (src/systemd_unit.h): std::expected
+# backported to C++17, single header. Errors travel as values; see the
+# module header for the convention.
+FetchContent_Declare(tl_expected
+    GIT_REPOSITORY https://github.com/TartanLlama/expected.git
+    GIT_TAG v1.1.0
+    GIT_SHALLOW TRUE)
+set(EXPECTED_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(EXPECTED_BUILD_PACKAGE OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(tl_expected)
+
 # ---- wallpaper_service
 # Control core (frontend-free): the generic systemd D-Bus client plus the
 # wallpaper domain logic (config persistence, argv mapping, library scan,
@@ -32,8 +43,8 @@ FetchContent_MakeAvailable(nlohmann_json)
 # buses, nlohmann for JSON, xcb-randr where the platform needs them. Frontends link this and nothing else — they must never talk to
 # systemctl or craft unit files themselves.
 add_library(wallpaper_service STATIC
-    src/systemdunit.cpp
-    src/unitbuilder.cpp
+    src/systemd_unit.cpp
+    src/exec_args.cpp
     src/config.cpp
     src/argvbuilder.cpp
     src/library.cpp
@@ -41,11 +52,11 @@ add_library(wallpaper_service STATIC
     src/peonybuilder.cpp
     src/integration/marker.cpp
     src/integration/peony.cpp
-    src/engineunit.cpp
+    src/engine_unit.cpp
     src/engineprocess.cpp
 )
 target_include_directories(wallpaper_service PUBLIC src ${XCB_RANDR_INCLUDE_DIRS})
-target_link_libraries(wallpaper_service PUBLIC nlohmann_json::nlohmann_json ${XCB_LIBRARIES} ${XCB_RANDR_LIBRARIES} ${LIBSYSTEMD_LIBRARIES})
+target_link_libraries(wallpaper_service PUBLIC nlohmann_json::nlohmann_json tl::expected ${XCB_LIBRARIES} ${XCB_RANDR_LIBRARIES} ${LIBSYSTEMD_LIBRARIES})
 target_compile_options(wallpaper_service PRIVATE -Wall -Wextra)
 
 # ---- wallpaper-engine

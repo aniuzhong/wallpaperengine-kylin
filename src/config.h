@@ -35,23 +35,23 @@ struct Config {
     bool disableParallax = false;                                 // --disable-parallax
     std::map<std::string, std::map<std::string, std::string>> properties; // wallpaper ID -> {property: value} (--set-property)
 
-    static std::string configDir();  // ~/.config/wallpaper-engine
-    static std::string configPath();
+    static std::string ConfigDir();  // ~/.config/wallpaper-engine
+    static std::string ConfigPath();
 
     // A missing file is not an error: the resolved defaults are the answer.
     // A file that exists but does not parse reports CorruptConfig — the
     // defaults still come back, but the caller can now tell the two apart
     // (and say so, instead of silently showing defaults).
-    static Config load(wallpaper_engine::Error* error = nullptr);
+    static Config Load(wallpaper_engine::Error* error = nullptr);
 
     // Atomic replace (write-temp + rename): a concurrent reader sees the old
     // config or the new one, never a truncated file.
-    bool save(wallpaper_engine::Error* error = nullptr) const;
+    bool Save(wallpaper_engine::Error* error = nullptr) const;
 
     // A copy with the user-editable fields updated from |patch|. Unknown keys
     // are ignored (forward compatibility) and so are wrongly-typed values
     // (the current value survives) — the same tolerance load() shows the
     // file. Screens and per-wallpaper properties are not patchable: they are
     // the result of applying a wallpaper, not a setting.
-    Config patched(const nlohmann::json& patch) const;
+    Config Patched(const nlohmann::json& patch) const;
 };

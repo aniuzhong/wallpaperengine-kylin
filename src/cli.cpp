@@ -3,7 +3,7 @@
 #include "argvbuilder.h"
 #include "config.h"
 #include "engineprocess.h"
-#include "engineunit.h"
+#include "engine_unit.h"
 #include "integration.h"
 #include "library.h"
 #include "report.h"
@@ -28,7 +28,7 @@ constexpr int EXIT_OK = 0;
 constexpr int EXIT_FAIL = 1;
 constexpr int EXIT_USAGE = 2;
 
-void printUsage() {
+void PrintUsage() {
     std::fputs(
         "usage: wallpaper-engine <command> [options]\n"
         "\n"
@@ -54,47 +54,47 @@ void printUsage() {
 // The one failure exit: --json consumers get the structured projection,
 // humans get "<what>: <why>". Every command funnels through here so a
 // reason is never dropped on the floor.
-int fail(bool json, const std::string& what, const wallpaper_engine::Error& error) {
+int Fail(bool json, const std::string& what, const wallpaper_engine::Error& error) {
     if (json)
-        std::printf("%s\n", Report::error(error).dump().c_str());
+        std::printf("%s\n", report::Error(error).dump().c_str());
     else
-        std::printf("%s: %s\n", what.c_str(), wallpaper_engine::describe(error).c_str());
+        std::printf("%s: %s\n", what.c_str(), wallpaper_engine::Describe(error).c_str());
     return EXIT_FAIL;
 }
 
-int cmdStatus(bool json) {
-    const Config config = Config::load();
+int CmdStatus(bool json) {
+    const Config config = Config::Load();
     wallpaper_engine::Error busError;
-    const std::string state = EngineUnit::unitState(&busError);
+    const std::string state = engine_unit::UnitState(&busError);
     // the unit file is what systemd actually runs; config.json is the
     // editor's draft. Prefer the unit's own ExecStart so status tells the
     // truth even after manual unit edits; fall back to config when the
     // unit file does not exist (or carries no wallpaper) yet.
-    std::map<std::string, std::string> screens = EngineUnit::unitBackgrounds();
+    std::map<std::string, std::string> screens = engine_unit::UnitBackgrounds();
     if (screens.empty())
         screens = config.screens;
 
     if (json) {
         const nlohmann::json root =
-            Report::status(EngineUnit::unitName(), state, screens, config.enginePath);
+            report::Status(engine_unit::UnitName(), state, screens, config.enginePath);
         std::printf("%s\n", root.dump().c_str());
         return EXIT_OK;
     }
 
-    std::printf("unit: %s (%s)\n", EngineUnit::unitName().c_str(), state.c_str());
+    std::printf("unit: %s (%s)\n", engine_unit::UnitName().c_str(), state.c_str());
     for (const auto& [screen, wallpaper] : screens)
         std::printf("screen %s: %s\n", screen.c_str(), wallpaper.c_str());
     std::printf("engine: %s\n", config.enginePath.c_str());
-    if (!busError.ok())
-        std::printf("bus: %s\n", wallpaper_engine::describe(busError).c_str());
+    if (!busError.Ok())
+        std::printf("bus: %s\n", wallpaper_engine::Describe(busError).c_str());
     return EXIT_OK;
 }
 
-int cmdList(bool json) {
-    const Config config = Config::load();
-    const std::vector<WallpaperEntry> entries = scanLibrary(config.workshopDir);
+int CmdList(bool json) {
+    const Config config = Config::Load();
+    const std::vector<WallpaperEntry> entries = ScanLibrary(config.workshopDir);
     if (json) {
-        std::printf("%s\n", Report::library(entries).dump().c_str());
+        std::printf("%s\n", report::Library(entries).dump().c_str());
         return EXIT_OK;
     }
     for (const WallpaperEntry& e : entries)
@@ -102,7 +102,7 @@ int cmdList(bool json) {
     return EXIT_OK;
 }
 
-int cmdSwitch(const std::vector<std::string>& args, bool json) {
+int CmdSwitch(const std::vector<std::string>& args, bool json) {
     constexpr const char* kScreenFlag = "--screen=";
 
     std::string id;
@@ -120,8 +120,8 @@ int cmdSwitch(const std::vector<std::string>& args, bool json) {
             id = a;
     }
 
-    const Config config = Config::load();
-    const std::vector<WallpaperEntry> library = scanLibrary(config.workshopDir);
+    const Config config = Config::Load();
+    const std::vector<WallpaperEntry> library = ScanLibrary(config.workshopDir);
     if (library.empty()) {
         std::printf("switch: no wallpapers found in %s\n", config.workshopDir.c_str());
         return EXIT_FAIL;
@@ -145,7 +145,7 @@ int cmdSwitch(const std::vector<std::string>& args, bool json) {
     // only necessary when the caller did not name a screen.
     const std::string screen =
         requestedScreen.empty()
-            ? EngineUnit::defaultScreenFor(config, EngineUnit::fallbackScreenName())
+            ? engine_unit::DefaultScreenFor(config, engine_unit::FallbackScreenName())
             : requestedScreen;
     if (screen.empty()) {
         std::printf("switch: no screen to target — pass --screen <name>\n");
@@ -153,19 +153,19 @@ int cmdSwitch(const std::vector<std::string>& args, bool json) {
     }
 
     wallpaper_engine::Error error;
-    const Config updated = EngineUnit::assignScreen(config, screen, id);
-    if (!EngineUnit::applyConfig(updated, &error))
-        return fail(json, "switch", error);
+    const Config updated = engine_unit::AssignScreen(config, screen, id);
+    if (!engine_unit::ApplyConfig(updated, &error))
+        return Fail(json, "switch", error);
 
     std::printf("switched: %s\n", id.c_str());
     return EXIT_OK;
 }
 
-int cmdProperties(const std::string& id) {
-    const Config config = Config::load();
+int CmdProperties(const std::string& id) {
+    const Config config = Config::Load();
     std::string output;
     bool timedOut = false;
-    const int exitCode = EngineProcess::runCaptured(
+    const int exitCode = engine_process::RunCaptured(
         config.enginePath, {"--list-properties", "--assets-dir", config.assetsDir, id}, 30000, &output,
         &timedOut);
     // the engine's own listing, verbatim: buffered rather than streamed so a
@@ -173,81 +173,81 @@ int cmdProperties(const std::string& id) {
     if (!output.empty())
         std::fwrite(output.data(), 1, output.size(), stdout);
 
-    if (EngineProcess::didNotRun(exitCode)) {
+    if (engine_process::DidNotRun(exitCode)) {
         wallpaper_engine::Error error;
         error.kind = wallpaper_engine::Error::Unknown;
         error.message = timedOut ? "the engine did not finish in time"
                                  : "the engine at " + config.enginePath + " could not be run";
-        return fail(false, "properties", error);
+        return Fail(false, "properties", error);
     }
     return exitCode;
 }
 
-int cmdSetupIntegration(bool json) {
+int CmdSetupIntegration(bool json) {
     wallpaper_engine::Error error;
-    if (!Integration::setup(&error))
-        return fail(json, "integration failed", error);
+    if (!integration::Setup(&error))
+        return Fail(json, "integration failed", error);
     std::printf("integration configured: peony injected, desktop transparent\n");
     return EXIT_OK;
 }
 
-int cmdRemoveIntegration(bool json) {
+int CmdRemoveIntegration(bool json) {
     wallpaper_engine::Error error;
-    if (!Integration::teardown(&error))
-        return fail(json, "teardown-integration failed", error);
+    if (!integration::Teardown(&error))
+        return Fail(json, "teardown-integration failed", error);
     std::printf("integration removed: the previous wallpaper is back, "
                  "peony is running without the shim\n");
     return EXIT_OK;
 }
 
-int cmdDoctor() {
+int CmdDoctor() {
     wallpaper_engine::Error configError;
-    const Config config = Config::load(&configError);
+    const Config config = Config::Load(&configError);
     std::error_code ec;
-    const std::string configPath = Config::configPath();
+    const std::string configPath = Config::ConfigPath();
     std::printf("config: %s (%s)\n", configPath.c_str(),
                  fs::exists(configPath, ec) ? "present" : "missing");
     // "present" and "readable" are different answers: say which one it is
-    if (!configError.ok())
-        std::printf("config problem: %s\n", wallpaper_engine::describe(configError).c_str());
+    if (!configError.Ok())
+        std::printf("config problem: %s\n", wallpaper_engine::Describe(configError).c_str());
     std::printf("engine binary: %s (%s)\n", config.enginePath.c_str(),
                  fs::exists(config.enginePath, ec) ? "present" : "MISSING");
     std::printf("assets dir: %s (%s)\n", config.assetsDir.c_str(),
                  fs::is_directory(config.assetsDir, ec) ? "present" : "MISSING");
     std::printf("workshop dir: %s (%d wallpapers)\n", config.workshopDir.c_str(),
-                 static_cast<int> (scanLibrary(config.workshopDir).size()));
+                 static_cast<int> (ScanLibrary(config.workshopDir).size()));
 
-    const Integration::Status peony = Integration::detect();
+    const integration::Status peony = integration::Detect();
     std::printf("peony: pid=%lld %s\n", static_cast<long long> (peony.peonyPid),
                  peony.peonyPid > 0 ? (peony.shimLoaded ? "injected" : "running WITHOUT shim") : "not running");
 
-    const std::string shimPath = Integration::locateShim();
+    const std::string shimPath = integration::LocateShim();
     std::printf("shim: %s\n", shimPath.empty() ? "libpeony-alpha.so (MISSING)"
                                                     : shimPath.c_str());
 
-    std::printf("unit %s: %s, unit file %s\n", EngineUnit::unitName().c_str(),
-                 EngineUnit::unitState().c_str(), EngineUnit::unitPath().c_str());
+    std::printf("unit %s: %s, unit file %s\n", engine_unit::UnitName().c_str(),
+                 engine_unit::UnitState().c_str(), engine_unit::UnitPath().c_str());
     return EXIT_OK;
 }
 
-int cmdSelftest() {
+int CmdSelftest() {
     // load the config (creating defaults on first run) and report
-    const Config config = Config::load();
-    std::printf("config path: %s\n", Config::configPath().c_str());
+    const Config config = Config::Load();
+    std::printf("config path: %s\n", Config::ConfigPath().c_str());
     std::printf("engine: %s\n", config.enginePath.c_str());
     std::printf("screens: %d, fps: %d, silent: %s\n", static_cast<int> (config.screens.size()), config.fps,
                  config.silent ? "true" : "false");
     wallpaper_engine::Error error;
-    if (!config.save(&error))
-        return fail(false, "selftest", error);
+    if (!config.Save(&error))
+        return Fail(false, "selftest", error);
     return EXIT_OK;
 }
 
 } // namespace
 
-int runCli(const std::vector<std::string>& args) {
+int RunCli(const std::vector<std::string>& args) {
     if (args.empty() || args.front() == "help" || args.front() == "--help") {
-        printUsage();
+        PrintUsage();
         return args.empty() ? EXIT_USAGE : EXIT_OK;
     }
 
@@ -257,37 +257,37 @@ int runCli(const std::vector<std::string>& args) {
 
     if (command == "start" || command == "resume") {
         wallpaper_engine::Error error;
-        if (!EngineUnit::writeUnitFile(Config::load(), &error) || !EngineUnit::daemonReload(&error) ||
-            !EngineUnit::startUnit(&error))
-            return fail(json, command, error);
+        if (!engine_unit::WriteUnitFile(Config::Load(), &error) || !engine_unit::DaemonReload(&error) ||
+            !engine_unit::StartUnit(&error))
+            return Fail(json, command, error);
         return EXIT_OK;
     }
     if (command == "stop" || command == "pause") {
         wallpaper_engine::Error error;
-        return EngineUnit::stopUnit(&error) ? EXIT_OK : fail(json, command, error);
+        return engine_unit::StopUnit(&error) ? EXIT_OK : Fail(json, command, error);
     }
     if (command == "restart") {
         wallpaper_engine::Error error;
-        return EngineUnit::restartUnit(&error) ? EXIT_OK : fail(json, command, error);
+        return engine_unit::RestartUnit(&error) ? EXIT_OK : Fail(json, command, error);
     }
     if (command == "status")
-        return cmdStatus(json);
+        return CmdStatus(json);
     if (command == "list")
-        return cmdList(json);
+        return CmdList(json);
     if (command == "switch")
-        return cmdSwitch(rest, json);
+        return CmdSwitch(rest, json);
     if (command == "properties")
-        return rest.empty() ? EXIT_USAGE : cmdProperties(rest.front());
+        return rest.empty() ? EXIT_USAGE : CmdProperties(rest.front());
     if (command == "setup-integration")
-        return cmdSetupIntegration(json);
+        return CmdSetupIntegration(json);
     if (command == "teardown-integration" || command == "remove-integration")
-        return cmdRemoveIntegration(json);
+        return CmdRemoveIntegration(json);
     if (command == "doctor")
-        return cmdDoctor();
+        return CmdDoctor();
     if (command == "selftest" || command == "--selftest")
-        return cmdSelftest();
+        return CmdSelftest();
 
     std::printf("unknown command: %s\n\n", command.c_str());
-    printUsage();
+    PrintUsage();
     return EXIT_USAGE;
 }

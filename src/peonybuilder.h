@@ -4,17 +4,17 @@
 #include <string>
 
 // Pure half of the peony backend — the same split as
-// unitbuilder/systemdunit in the systemd layer. Everything here is a plain
+// exec_args/systemd_unit in the systemd layer. Everything here is a plain
 // function of its arguments, so the fiddly parts (the wallpaper candidate
 // list, the shim environment) are unit-testable; the syscall sequence that
 // consumes them lives in integration/peony.cpp. The namespace is the
-// backend's (Peony), so a future desktop-shell backend gets its own builder
+// backend's (peony), so a future desktop-shell backend gets its own builder
 // namespace instead of growing into this one.
-namespace Peony {
+namespace peony {
 
 // True when a /proc/<pid>/cmdline is the peony desktop process. The uid
 // check stays with the caller: another session's peony is not ours to touch.
-bool isPeonyDesktopCmdline(const std::string& cmdline);
+bool IsPeonyDesktopCmdline(const std::string& cmdline);
 
 // The PEONY_ALPHA_WALLPAPER value: the paths the shim may be asked to
 // match, colon-separated. Order is not semantic — the shim replaces the
@@ -31,21 +31,21 @@ bool isPeonyDesktopCmdline(const std::string& cmdline);
 // Empty entries are dropped. An entry equal to one already present is
 // dropped (exact path comparison, not the substring test this replaces — a
 // path that merely contains another is a distinct candidate).
-std::string buildWallpaperList(const std::string& marker, const std::string& normalized,
+std::string BuildWallpaperList(const std::string& marker, const std::string& normalized,
                                const std::string& previous);
 
 // The first path of such a list — the wallpaper the desktop had before setup
-// ran. teardown() recovers it this way when the recorded copy is missing
+// ran. Teardown() recovers it this way when the recorded copy is missing
 // (an install from before the record existed): the list the running peony
 // was launched with is then the only place the path survives.
-std::string firstWallpaperIn(const std::string& list);
+std::string FirstWallpaperIn(const std::string& list);
 
 // The environment the injected peony is launched with: the interposer and
 // the wallpaper list. The log destination is deliberately not part of the
 // contract — shim logging is always on and lands in the per-user data dir
 // (see src/shim/peony-alpha.cpp); without PEONY_ALPHA_WALLPAPER the shim
 // stays inert.
-std::map<std::string, std::string> buildShimEnvironment(const std::string& shimPath,
+std::map<std::string, std::string> BuildShimEnvironment(const std::string& shimPath,
                                                         const std::string& wallpaperList);
 
-} // namespace Peony
+} // namespace peony

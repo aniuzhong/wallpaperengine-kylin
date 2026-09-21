@@ -1,8 +1,14 @@
-#include "unitbuilder.h"
+#include "exec_args.h"
 
 namespace systemd {
 
-std::string escapeExecArg(const std::string& arg) {
+std::string CanonicalUnitName(const std::string& name) {
+    if (name.find('.') == std::string::npos)
+        return name + ".service";
+    return name;
+}
+
+std::string EscapeExecArg(const std::string& arg) {
     // literal $ and % must be doubled: systemd substitutes $VAR/${VAR} and
     // %specifiers in ExecStart arguments
     std::string escaped;
@@ -36,7 +42,7 @@ std::string escapeExecArg(const std::string& arg) {
     return quoted;
 }
 
-std::vector<std::string> parseExecArgs(const std::string& line) {
+std::vector<std::string> ParseExecArgs(const std::string& line) {
     std::vector<std::string> args;
     std::string current;
     bool inQuotes = false;
@@ -50,7 +56,7 @@ std::vector<std::string> parseExecArgs(const std::string& line) {
     for (size_t i = 0; i < line.size(); i++) {
         const char c = line[i];
         if (inQuotes) {
-            // escapeExecArg only emits \\ and \" inside quotes; any other
+            // EscapeExecArg only emits \\ and \" inside quotes; any other
             // backslash sequence stays literal
             if (c == '\\' && i + 1 < line.size() && (line[i + 1] == '"' || line[i + 1] == '\\')) {
                 current += line[i + 1];
@@ -86,7 +92,7 @@ std::vector<std::string> parseExecArgs(const std::string& line) {
     return args;
 }
 
-ExecCommand toExecCommand(const std::vector<std::string>& execArgs) {
+ExecCommand ToExecCommand(const std::vector<std::string>& execArgs) {
     ExecCommand command;
     if (!execArgs.empty()) {
         command.program = execArgs.front();

@@ -3,13 +3,13 @@
 #include <algorithm>
 #include <vector>
 
-namespace Peony {
+namespace peony {
 
-bool isPeonyDesktopCmdline(const std::string& cmdline) {
+bool IsPeonyDesktopCmdline(const std::string& cmdline) {
     return cmdline.find("peony-qt-desktop") != std::string::npos;
 }
 
-std::string buildWallpaperList(const std::string& marker, const std::string& normalized,
+std::string BuildWallpaperList(const std::string& marker, const std::string& normalized,
                                const std::string& previous) {
     std::vector<std::string> paths;
     for (const std::string& candidate : { previous, normalized, marker }) {
@@ -29,12 +29,12 @@ std::string buildWallpaperList(const std::string& marker, const std::string& nor
     return joined;
 }
 
-std::string firstWallpaperIn(const std::string& list) {
+std::string FirstWallpaperIn(const std::string& list) {
     const size_t colon = list.find(':');
     return colon == std::string::npos ? list : list.substr(0, colon);
 }
 
-std::map<std::string, std::string> buildShimEnvironment(const std::string& shimPath,
+std::map<std::string, std::string> BuildShimEnvironment(const std::string& shimPath,
                                                         const std::string& wallpaperList) {
     return {
         { "LD_PRELOAD", shimPath },
@@ -42,4 +42,4 @@ std::map<std::string, std::string> buildShimEnvironment(const std::string& shimP
     };
 }
 
-} // namespace Peony
+} // namespace peony

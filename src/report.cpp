@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cctype>
 
-namespace Report {
+namespace report {
 
 namespace {
 
@@ -46,14 +46,14 @@ const char* kindName(wallpaper_engine::Error::Kind kind) {
 
 } // namespace
 
-nlohmann::json status(const std::string& unitName, const std::string& state,
+nlohmann::json Status(const std::string& UnitName, const std::string& state,
                       const std::map<std::string, std::string>& screens, const std::string& enginePath) {
     nlohmann::json screensJson = nlohmann::json::object();
     for (const auto& [screen, wallpaper] : screens)
         screensJson[screen] = wallpaper;
 
     nlohmann::json status;
-    status["unit"] = unitName;
+    status["unit"] = UnitName;
     status["state"] = state;
     status["screens"] = std::move(screensJson);
     status["enginePath"] = enginePath;
@@ -63,7 +63,7 @@ nlohmann::json status(const std::string& unitName, const std::string& state,
     return root;
 }
 
-nlohmann::json library(const std::vector<WallpaperEntry>& entries) {
+nlohmann::json Library(const std::vector<WallpaperEntry>& entries) {
     nlohmann::json arr = nlohmann::json::array();
     for (const WallpaperEntry& entry : entries) {
         nlohmann::json o;
@@ -83,10 +83,10 @@ nlohmann::json library(const std::vector<WallpaperEntry>& entries) {
     return nlohmann::json::array({ std::move(arr) });
 }
 
-nlohmann::json error(const wallpaper_engine::Error& error) {
+nlohmann::json Error(const wallpaper_engine::Error& error) {
     nlohmann::json detail;
     detail["kind"] = kindName(error.kind);
-    detail["message"] = error.message.empty() ? describe(error) : error.message;
+    detail["message"] = error.message.empty() ? Describe(error) : error.message;
     if (!error.dbusName.empty())
         detail["dbusName"] = error.dbusName;
 
@@ -95,4 +95,4 @@ nlohmann::json error(const wallpaper_engine::Error& error) {
     return root;
 }
 
-} // namespace Report
+} // namespace report

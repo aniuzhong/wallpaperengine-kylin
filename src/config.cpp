@@ -22,7 +22,7 @@ std::string firstExisting(const std::vector<std::string>& candidates, const std:
 // Steam install layouts, matching linux-wallpaperengine's own auto-detection
 // list (native, ~/.steam symlink, flatpak, snap).
 std::vector<std::string> steamRoots() {
-    const std::string home = wallpaper_engine::homeDir();
+    const std::string home = wallpaper_engine::HomeDir();
     return {
         home + "/.steam/steam",
         home + "/.local/share/Steam",
@@ -61,15 +61,15 @@ constexpr int kSchemaVersion = 1;
 
 } // namespace
 
-std::string Config::configDir() {
-    return wallpaper_engine::envOr("XDG_CONFIG_HOME", wallpaper_engine::homeDir() + "/.config") + "/wallpaper-engine";
+std::string Config::ConfigDir() {
+    return wallpaper_engine::EnvOr("XDG_CONFIG_HOME", wallpaper_engine::HomeDir() + "/.config") + "/wallpaper-engine";
 }
 
-std::string Config::configPath() {
-    return configDir() + "/config.json";
+std::string Config::ConfigPath() {
+    return ConfigDir() + "/config.json";
 }
 
-Config Config::load(wallpaper_engine::Error* error) {
+Config Config::Load(wallpaper_engine::Error* error) {
     Config config;
 
     // Resolve defaults from standard install locations; the config file
@@ -79,7 +79,7 @@ Config Config::load(wallpaper_engine::Error* error) {
         "/usr/local/bin/linux-wallpaperengine",
         "/usr/bin/linux-wallpaperengine",
     };
-    const std::string appDir = wallpaper_engine::exeDir();
+    const std::string appDir = wallpaper_engine::ExeDir();
     if (!appDir.empty()) {
         engineCandidates.push_back(appDir + "/../linux-wallpaperengine"); // deb: bin/ sibling of the flat engine install
         engineCandidates.push_back(appDir + "/linux-wallpaperengine");    // flat dev tree
@@ -98,13 +98,13 @@ Config Config::load(wallpaper_engine::Error* error) {
     config.workshopDir = firstExisting(workshopCandidates, workshopCandidates.front());
 
     std::error_code existsEc;
-    std::ifstream file(configPath());
+    std::ifstream file(ConfigPath());
     if (!file.is_open()) {
         // a config that was never written is the normal first-run case; one
         // that exists and cannot be opened is a real failure
-        if (error != nullptr && fs::exists(configPath(), existsEc)) {
+        if (error != nullptr && fs::exists(ConfigPath(), existsEc)) {
             error->kind = wallpaper_engine::Error::FileError;
-            error->message = "cannot read " + configPath();
+            error->message = "cannot read " + ConfigPath();
         }
         return config;
     }
@@ -117,14 +117,14 @@ Config Config::load(wallpaper_engine::Error* error) {
         // caller now learns why it is looking at defaults
         if (error != nullptr) {
             error->kind = wallpaper_engine::Error::CorruptConfig;
-            error->message = configPath() + ": " + parseError.what();
+            error->message = ConfigPath() + ": " + parseError.what();
         }
         return config;
     }
     if (!obj.is_object()) {
         if (error != nullptr) {
             error->kind = wallpaper_engine::Error::CorruptConfig;
-            error->message = configPath() + ": not a JSON object";
+            error->message = ConfigPath() + ": not a JSON object";
         }
         return config;
     }
@@ -159,7 +159,7 @@ Config Config::load(wallpaper_engine::Error* error) {
     return config;
 }
 
-Config Config::patched(const nlohmann::json& patch) const {
+Config Config::Patched(const nlohmann::json& patch) const {
     if (!patch.is_object())
         return *this;
 
@@ -182,9 +182,9 @@ Config Config::patched(const nlohmann::json& patch) const {
     return updated;
 }
 
-bool Config::save(wallpaper_engine::Error* error) const {
+bool Config::Save(wallpaper_engine::Error* error) const {
     std::error_code ec;
-    fs::create_directories(configDir(), ec);
+    fs::create_directories(ConfigDir(), ec);
 
     json obj;
     obj["schemaVersion"] = kSchemaVersion;
@@ -216,5 +216,5 @@ bool Config::save(wallpaper_engine::Error* error) const {
 
     // indented, matching QJsonDocument::Indented; replaced atomically so a
     // concurrent reader (or a crash) never sees a half-written config
-    return wallpaper_engine::writeFileAtomic(configPath(), obj.dump(2) + "\n", error);
+    return wallpaper_engine::WriteFileAtomic(ConfigPath(), obj.dump(2) + "\n", error);
 }

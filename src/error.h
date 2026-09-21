@@ -28,11 +28,11 @@ struct Error {
     std::string dbusName; // D-Bus error name, when the failure came from one
     std::string message;  // human-readable detail
 
-    bool ok() const { return kind == NoError; }
+    bool Ok() const { return kind == NoError; }
 };
 
 // Trailing ": <message>" for logging a non-ok error; empty for NoError.
-inline std::string describe(const Error& error) {
+inline std::string Describe(const Error& error) {
     if (error.kind == Error::NoError)
         return {};
     return error.message.empty() ? std::string("unknown error") : error.message;

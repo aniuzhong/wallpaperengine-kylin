@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-std::vector<std::string> buildArgv(const Config& config) {
+std::vector<std::string> BuildArgv(const Config& config) {
     std::vector<std::string> argv { config.enginePath };
 
     if (!config.assetsDir.empty()) {

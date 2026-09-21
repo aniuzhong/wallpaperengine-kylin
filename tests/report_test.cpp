@@ -28,7 +28,7 @@ private slots:
     void statusCarriesUnitStateScreensAndEngine() {
         const std::map<std::string, std::string> screens { { "DP-0", "843532366" }, { "HDMI-1", "990011" } };
         const QJsonObject root =
-            parseObject(Report::status("wallpaper-engine", "active", screens, "/opt/engine"));
+            parseObject(report::Status("wallpaper-engine", "active", screens, "/opt/engine"));
 
         // the wrapper is what consumers reach through
         QCOMPARE(root.size(), 1);
@@ -42,7 +42,7 @@ private slots:
 
     void statusWithNoScreensHasAnEmptyScreensObject() {
         const QJsonObject status =
-            parseObject(Report::status("unit", "inactive", {}, "/opt/engine")).value("status").toObject();
+            parseObject(report::Status("unit", "inactive", {}, "/opt/engine")).value("status").toObject();
         QVERIFY(status.value("screens").isObject());
         QVERIFY(status.value("screens").toObject().isEmpty());
     }
@@ -53,7 +53,7 @@ private slots:
         entry.title = "星尘";
         entry.type = "scene";
 
-        const QJsonArray root = parseArray(Report::library({ entry }));
+        const QJsonArray root = parseArray(report::Library({ entry }));
         QCOMPARE(root.size(), 1); // the wrapper array
         const QJsonArray entries = root.at(0).toArray();
         QCOMPARE(entries.size(), 1);
@@ -64,7 +64,7 @@ private slots:
     }
 
     void libraryOfNothingIsStillWrapped() {
-        const QJsonArray root = parseArray(Report::library({}));
+        const QJsonArray root = parseArray(report::Library({}));
         QCOMPARE(root.size(), 1);
         QVERIFY(root.at(0).toArray().isEmpty());
     }
@@ -75,7 +75,7 @@ private slots:
         error.message = "Unit not loaded";
         error.dbusName = "org.freedesktop.systemd1.NoSuchUnit";
 
-        const QJsonObject detail = parseObject(Report::error(error)).value("error").toObject();
+        const QJsonObject detail = parseObject(report::Error(error)).value("error").toObject();
         QCOMPARE(detail.value("kind").toString(), QString("no-such-unit"));
         QCOMPARE(detail.value("message").toString(), QString("Unit not loaded"));
         QCOMPARE(detail.value("dbusName").toString(), QString("org.freedesktop.systemd1.NoSuchUnit"));
@@ -86,7 +86,7 @@ private slots:
         error.kind = wallpaper_engine::Error::FileError;
         error.message = "cannot write /tmp/x";
 
-        const QJsonObject detail = parseObject(Report::error(error)).value("error").toObject();
+        const QJsonObject detail = parseObject(report::Error(error)).value("error").toObject();
         QCOMPARE(detail.value("kind").toString(), QString("file-error"));
         QVERIFY(!detail.contains("dbusName"));
     }
@@ -95,7 +95,7 @@ private slots:
         wallpaper_engine::Error error;
         error.kind = wallpaper_engine::Error::Unknown;
 
-        const QJsonObject detail = parseObject(Report::error(error)).value("error").toObject();
+        const QJsonObject detail = parseObject(report::Error(error)).value("error").toObject();
         QCOMPARE(detail.value("kind").toString(), QString("unknown"));
         QVERIFY(!detail.value("message").toString().isEmpty());
     }

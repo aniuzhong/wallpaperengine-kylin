@@ -15,22 +15,22 @@
 //
 // Every function here is pure — values in, json out. Nothing reaches for
 // the bus, the filesystem or the unit name; callers pass those in.
-namespace Report {
+namespace report {
 
 // {"status": {unit, state, screens: {screen: wallpaper}, enginePath}}
-// |screens| is what the unit actually runs (EngineUnit::unitBackgrounds),
+// |screens| is what the unit actually runs (engine_unit::UnitBackgrounds),
 // which is the truth even after a manual unit edit.
-nlohmann::json status(const std::string& unitName, const std::string& state,
+nlohmann::json Status(const std::string& UnitName, const std::string& state,
                       const std::map<std::string, std::string>& screens, const std::string& enginePath);
 
 // The entries wrapped in one array — the shape `list --json` has always
 // published. Consumers index [0] for the entries; kept as-is so existing
 // scripts keep working.
-nlohmann::json library(const std::vector<WallpaperEntry>& entries);
+nlohmann::json Library(const std::vector<WallpaperEntry>& entries);
 
 // {"error": {kind, message, dbusName?}} — the failure counterpart, so a
 // --json consumer never has to parse prose. dbusName is present only when
 // the failure came from the bus.
-nlohmann::json error(const wallpaper_engine::Error& error);
+nlohmann::json Error(const wallpaper_engine::Error& error);
 
-} // namespace Report
+} // namespace report

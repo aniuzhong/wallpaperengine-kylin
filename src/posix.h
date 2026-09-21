@@ -19,12 +19,12 @@
 
 namespace wallpaper_engine {
 
-inline std::string envOr(const char* name, const std::string& fallback) {
+inline std::string EnvOr(const char* name, const std::string& fallback) {
     const char* value = getenv(name);
     return (value != nullptr && *value != '\0') ? std::string(value) : fallback;
 }
 
-inline std::string homeDir() {
+inline std::string HomeDir() {
     const char* home = getenv("HOME");
     if (home != nullptr && *home != '\0')
         return home;
@@ -35,7 +35,7 @@ inline std::string homeDir() {
 
 // Directory of the running executable — the applicationDirPath() replacement
 // (empty when the link cannot be resolved).
-inline std::string exeDir() {
+inline std::string ExeDir() {
     char buf[4096];
     const ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
     if (n <= 0)
@@ -46,20 +46,20 @@ inline std::string exeDir() {
     return slash == std::string::npos ? std::string() : exe.substr(0, slash);
 }
 
-inline void sleepMs(long ms) {
+inline void SleepMs(long ms) {
     timespec ts { ms / 1000, (ms % 1000) * 1000000L };
     nanosleep(&ts, nullptr);
 }
 
 // Whether |program| can be executed at all: an explicit path is checked
 // directly, a bare name is searched along PATH.
-inline bool executableExists(const std::string& program) {
+inline bool ExecutableExists(const std::string& program) {
     if (program.empty())
         return false;
     if (program.find('/') != std::string::npos)
         return ::access(program.c_str(), X_OK) == 0;
 
-    const std::string path = envOr("PATH", "/usr/local/bin:/usr/bin:/bin");
+    const std::string path = EnvOr("PATH", "/usr/local/bin:/usr/bin:/bin");
     size_t start = 0;
     while (start <= path.size()) {
         const size_t end = path.find(':', start);
@@ -77,8 +77,8 @@ inline bool executableExists(const std::string& program) {
 // process must outlive the caller (a browser, a relaunched desktop), and it
 // must never become the caller's zombie — the caller is a server that may
 // stay up for hours after the child is gone.
-inline bool spawnDetached(const std::vector<std::string>& argv) {
-    if (argv.empty() || !executableExists(argv.front()))
+inline bool SpawnDetached(const std::vector<std::string>& argv) {
+    if (argv.empty() || !ExecutableExists(argv.front()))
         return false;
 
     const pid_t pid = fork();
@@ -107,7 +107,7 @@ inline bool spawnDetached(const std::vector<std::string>& argv) {
 // fsync it, then rename over the target. A concurrent reader — or a crash —
 // sees either the whole old file or the whole new one, never a truncated
 // mix. The temp file is removed on every failure path.
-inline bool writeFileAtomic(const std::string& path, const std::string& content, Error* error = nullptr) {
+inline bool WriteFileAtomic(const std::string& path, const std::string& content, Error* error = nullptr) {
     const std::string temp = path + ".tmp";
     const int fd = ::open(temp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd < 0) {
