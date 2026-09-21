@@ -19,7 +19,7 @@
 #include <unistd.h>
 
 
-using namespace SystemdLayer;
+using namespace systemd;
 
 namespace {
 // the unit object path the manager derives from the id ('-' -> _2d, '.' -> _2e)
@@ -64,9 +64,9 @@ private slots:
                              "/systemd/user/" + QString::fromStdString(m_name);
         QVERIFY(QFile::exists(path));
 
-        Error error;
+        wallpaper_engine::Error error;
         const std::string state = m_unit->activeState(&error);
-        QCOMPARE(error.kind, Error::NoError); // unit is loaded once installed
+        QCOMPARE(error.kind, wallpaper_engine::Error::NoError); // unit is loaded once installed
         QVERIFY(state == "inactive" || state == "active" || state == "failed");
     }
 
@@ -163,9 +163,9 @@ private slots:
 
     void error_stopNonexistentUnitIsTyped() {
         SystemdUnit ghost("wallpaper-engine-test-nonexistent-does-not-exist.service");
-        Error error;
+        wallpaper_engine::Error error;
         ghost.stop(&error);
-        QVERIFY(error.kind != Error::NoError);
+        QVERIFY(error.kind != wallpaper_engine::Error::NoError);
         QVERIFY(!error.dbusName.empty());
         QVERIFY(!error.message.empty());
     }
@@ -221,9 +221,9 @@ private slots:
     }
 
     void transient_rejectsEmptyArgv() {
-        Error error;
+        wallpaper_engine::Error error;
         QVERIFY(!m_unit->startTransient({}, {}, {}, &error));
-        QCOMPARE(error.kind, Error::InvalidInput);
+        QCOMPARE(error.kind, wallpaper_engine::Error::InvalidInput);
     }
 
     // ---- helpers -------------------------------------------------------------
@@ -240,7 +240,7 @@ private:
             return false;
         file.write(content.c_str(), qint64(content.size()));
         file.close();
-        return SystemdLayer::daemonReload();
+        return systemd::daemonReload();
     }
 
     static std::string selfHealUnitContent() {

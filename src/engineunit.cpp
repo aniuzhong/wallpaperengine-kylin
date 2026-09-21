@@ -92,7 +92,7 @@ std::string unitFileContent(const Config& config) {
     for (const std::string& arg : buildArgv(config)) {
         if (!exec.empty())
             exec += ' ';
-        exec += SystemdLayer::escapeExecArg(arg);
+        exec += systemd::escapeExecArg(arg);
     }
 
     // persist the XAUTHORITY path this session actually uses: sddm/gdm keep
@@ -144,7 +144,7 @@ std::map<std::string, std::string> unitBackgrounds() {
         if (line.rfind(execKey, 0) != 0)
             continue;
 
-        const std::vector<std::string> args = SystemdLayer::parseExecArgs(line.substr(std::strlen(execKey)));
+        const std::vector<std::string> args = systemd::parseExecArgs(line.substr(std::strlen(execKey)));
         std::string screen;
         for (size_t i = 0; i < args.size(); i++) {
             if (args[i] == "--screen-root" && i + 1 < args.size())
@@ -169,14 +169,14 @@ bool writeUnitFile(const Config& config, wallpaper_engine::Error* error) {
 // manager is addressed directly on the session bus, no systemctl subprocesses
 bool daemonReload(wallpaper_engine::Error* error) {
     wallpaper_engine::Error local;
-    SystemdLayer::daemonReload(&local);
+    systemd::daemonReload(&local);
     if (error != nullptr)
         *error = local;
     return local.ok();
 }
 
 bool startUnit(wallpaper_engine::Error* error) {
-    SystemdLayer::SystemdUnit unit(unitNameFromEnv());
+    systemd::SystemdUnit unit(unitNameFromEnv());
     wallpaper_engine::Error local;
     unit.start(&local);
     if (error != nullptr)
@@ -185,7 +185,7 @@ bool startUnit(wallpaper_engine::Error* error) {
 }
 
 bool restartUnit(wallpaper_engine::Error* error) {
-    SystemdLayer::SystemdUnit unit(unitNameFromEnv());
+    systemd::SystemdUnit unit(unitNameFromEnv());
     wallpaper_engine::Error local;
     unit.restart(&local);
     if (error != nullptr)
@@ -194,14 +194,14 @@ bool restartUnit(wallpaper_engine::Error* error) {
 }
 
 bool stopUnit(wallpaper_engine::Error* error) {
-    SystemdLayer::SystemdUnit unit(unitNameFromEnv());
+    systemd::SystemdUnit unit(unitNameFromEnv());
     wallpaper_engine::Error local;
     unit.stop(&local);
     // stop/reset-failed on a unit that was never loaded already has the
     // desired end state: systemd reports NoSuchUnit ("not loaded",
     // systemctl's old exit code 5). Treat it as success — keeps the CLI
     // idempotent for scripting.
-    if (SystemdLayer::tolerated(local))
+    if (systemd::tolerated(local))
         local = {};
     if (error != nullptr)
         *error = local;
@@ -209,7 +209,7 @@ bool stopUnit(wallpaper_engine::Error* error) {
 }
 
 std::string unitState(wallpaper_engine::Error* error) {
-    SystemdLayer::SystemdUnit unit(unitNameFromEnv());
+    systemd::SystemdUnit unit(unitNameFromEnv());
     return unit.activeState(error);
 }
 

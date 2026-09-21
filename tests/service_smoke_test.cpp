@@ -14,12 +14,12 @@
 
 int main() {
     // pure systemd-layer logic
-    if (SystemdLayer::escapeExecArg("a b") != "\"a b\"") {
+    if (systemd::escapeExecArg("a b") != "\"a b\"") {
         std::printf("smoke: escapeExecArg failed\n");
         return 1;
     }
-    const SystemdLayer::ExecCommand command =
-        SystemdLayer::toExecCommand(std::vector<std::string> { "/bin/tool", "x" });
+    const systemd::ExecCommand command =
+        systemd::toExecCommand(std::vector<std::string> { "/bin/tool", "x" });
     if (command.program != "/bin/tool" || command.args.size() != 2) {
         std::printf("smoke: toExecCommand failed\n");
         return 1;

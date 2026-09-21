@@ -16,7 +16,7 @@
 // live-change subscription was removed as dead code; state is polled
 // through activeState()).
 
-namespace SystemdLayer {
+namespace systemd {
 
 constexpr const char* kService = "org.freedesktop.systemd1";
 constexpr const char* kManagerPath = "/org/freedesktop/systemd1";
@@ -24,11 +24,11 @@ constexpr const char* kManagerIface = "org.freedesktop.systemd1.Manager";
 constexpr const char* kUnitIface = "org.freedesktop.systemd1.Unit";
 
 // Connect to the user bus; returns nullptr with BusUnreachable set on failure.
-sd_bus* openUserBus(Error* error) {
+sd_bus* openUserBus(wallpaper_engine::Error* error) {
     sd_bus* bus = nullptr;
     if (sd_bus_open_user(&bus) < 0) {
         if (error) {
-            error->kind = Error::BusUnreachable;
+            error->kind = wallpaper_engine::Error::BusUnreachable;
             error->message = "cannot connect to the user bus";
         }
         return nullptr;
@@ -38,21 +38,21 @@ sd_bus* openUserBus(Error* error) {
 
 // Map a failed sd-bus call onto the typed error. D-Bus error names are
 // preserved for diagnostics; kind is what callers branch on.
-void takeError(int rc, const sd_bus_error& err, Error* error) {
+void takeError(int rc, const sd_bus_error& err, wallpaper_engine::Error* error) {
     if (error == nullptr)
         return;
     if (err.name != nullptr) {
         error->dbusName = err.name;
         error->message = err.message != nullptr ? err.message : "";
-        error->kind = std::strstr(err.name, "NoSuchUnit") != nullptr ? Error::NoSuchUnit : Error::Unknown;
+        error->kind = std::strstr(err.name, "NoSuchUnit") != nullptr ? wallpaper_engine::Error::NoSuchUnit : wallpaper_engine::Error::Unknown;
     } else {
-        error->kind = Error::Unknown;
+        error->kind = wallpaper_engine::Error::Unknown;
         error->message = std::strerror(-rc);
     }
 }
 
 // Fire one manager method (varargs-encoded arguments) and report success.
-bool callManager(const char* method, const char* types, Error* error, ...) {
+bool callManager(const char* method, const char* types, wallpaper_engine::Error* error, ...) {
     va_list ap;
     va_start(ap, error);
     sd_bus* bus = openUserBus(error);
@@ -82,12 +82,12 @@ bool callManager(const char* method, const char* types, Error* error, ...) {
     return ok;
 }
 
-bool daemonReload(Error* error) {
+bool daemonReload(wallpaper_engine::Error* error) {
     return callManager("Reload", "", error);
 }
 
-bool tolerated(const Error& error) {
-    return error.kind == Error::NoError || error.kind == Error::NoSuchUnit ||
+bool tolerated(const wallpaper_engine::Error& error) {
+    return error.kind == wallpaper_engine::Error::NoError || error.kind == wallpaper_engine::Error::NoSuchUnit ||
            error.message.find("not loaded") != std::string::npos;
 }
 
@@ -162,10 +162,10 @@ int appendExecStart(sd_bus_message* m, const ExecCommand& command) {
 
 bool SystemdUnit::startTransient(const std::vector<std::string>& execArgs,
                                   const std::map<std::string, std::string>& environment,
-                                  const std::map<std::string, UnitPropertyValue>& extraProperties, Error* error) {
+                                  const std::map<std::string, UnitPropertyValue>& extraProperties, wallpaper_engine::Error* error) {
     if (execArgs.empty()) {
         if (error) {
-            error->kind = Error::InvalidInput;
+            error->kind = wallpaper_engine::Error::InvalidInput;
             error->message = "empty argv";
         }
         return false;
@@ -224,7 +224,7 @@ bool SystemdUnit::startTransient(const std::vector<std::string>& execArgs,
             takeError(rc, err, error);
         sd_bus_error_free(&err);
     } else if (error != nullptr) {
-        error->kind = Error::Unknown;
+        error->kind = wallpaper_engine::Error::Unknown;
         error->message = std::strerror(-rc);
     }
     sd_bus_message_unref(m);
@@ -232,31 +232,31 @@ bool SystemdUnit::startTransient(const std::vector<std::string>& execArgs,
     return ok;
 }
 
-bool SystemdUnit::start(Error* error) {
+bool SystemdUnit::start(wallpaper_engine::Error* error) {
     return callManager("StartUnit", "ss", error, m_unitName.c_str(), "replace");
 }
 
-bool SystemdUnit::stop(Error* error) {
+bool SystemdUnit::stop(wallpaper_engine::Error* error) {
     return callManager("StopUnit", "ss", error, m_unitName.c_str(), "replace");
 }
 
-bool SystemdUnit::restart(Error* error) {
+bool SystemdUnit::restart(wallpaper_engine::Error* error) {
     return callManager("RestartUnit", "ss", error, m_unitName.c_str(), "replace");
 }
 
-bool SystemdUnit::resetFailed(Error* error) {
+bool SystemdUnit::resetFailed(wallpaper_engine::Error* error) {
     // advisory operation: a unit that is not loaded has nothing to reset —
     // systemd errors on it, but callers mean "make sure it can start", so
     // that outcome is success
-    Error local;
+    wallpaper_engine::Error local;
     callManager("ResetFailedUnit", "s", &local, m_unitName.c_str());
     if (tolerated(local))
         local = {};
     if (error) *error = local;
-    return local.kind == Error::NoError;
+    return local.kind == wallpaper_engine::Error::NoError;
 }
 
-std::string SystemdUnit::activeState(Error* error) const {
+std::string SystemdUnit::activeState(wallpaper_engine::Error* error) const {
     sd_bus* bus = openUserBus(error);
     if (bus == nullptr)
         return "unknown";
@@ -287,4 +287,4 @@ std::string SystemdUnit::activeState(Error* error) const {
 
 bool SystemdUnit::isActive() const { return activeState() == "active"; }
 
-} // namespace SystemdLayer
+} // namespace systemd

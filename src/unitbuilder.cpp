@@ -1,6 +1,6 @@
 #include "unitbuilder.h"
 
-namespace SystemdLayer {
+namespace systemd {
 
 std::string escapeExecArg(const std::string& arg) {
     // literal $ and % must be doubled: systemd substitutes $VAR/${VAR} and
@@ -95,4 +95,4 @@ ExecCommand toExecCommand(const std::vector<std::string>& execArgs) {
     return command;
 }
 
-} // namespace SystemdLayer
+} // namespace systemd

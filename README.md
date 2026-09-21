@@ -76,5 +76,7 @@ produces the .deb. The Kylin base image is provisioned by
 
 ## Style
 
-Google C++ Style Guide with one deviation: 4-space indent. Docs say "the
-shim" for the interposer; new identifiers follow the Names grammar above.
+Google-flavored: 4-space indent (the deliberate deviation), camelCase
+functions, PascalCase types, namespaces named for their module. Docs say
+"the shim" for the interposer; new identifiers follow the Names grammar
+above.

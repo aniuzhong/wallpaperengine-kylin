@@ -7,10 +7,10 @@
 #include <string>
 #include <vector>
 
-// Thin control surface over the systemd user manager, backed by the typed
-// D-Bus layer in src/service/systemd. The systemd user session is the
-// runtime supervisor: the UI is only its editor, so closing the UI never
-// affects a running wallpaper.
+// Thin control surface over the systemd user manager, backed by the sd-bus
+// client in systemdunit.cpp. The systemd user session is the runtime
+// supervisor: the CLI is only its editor, so exiting the CLI never affects
+// a running wallpaper.
 //
 // The unit name can be overridden with WALLPAPER_ENGINE_UNIT (tests).
 namespace EngineUnit {
@@ -49,9 +49,9 @@ std::string defaultScreenFor(const Config& config, const std::string& primaryOut
 // entry would be unmatchable by the engine).
 Config assignScreen(Config config, const std::string& screen, const std::string& wallpaperId);
 
-// The one apply chain shared by the UI and the CLI: persist the config,
-// project it into the unit file, reload the manager, restart the unit.
-// |error| carries the first step that failed.
+// The one apply chain: persist the config, project it into the unit file,
+// reload the manager, restart the unit. |error| carries the first step that
+// failed.
 bool applyConfig(const Config& config, wallpaper_engine::Error* error = nullptr);
 
 } // namespace EngineUnit

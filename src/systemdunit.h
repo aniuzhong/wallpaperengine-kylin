@@ -8,11 +8,7 @@
 #include <variant>
 #include <vector>
 
-namespace SystemdLayer {
-
-// The one project-wide error type (src/error.h), re-exported here so this
-// layer's signatures keep reading as they always have.
-using Error = wallpaper_engine::Error;
+namespace systemd {
 
 // Value of an extra transient unit property: marshaled to its natural D-Bus
 // type (string / boolean / 64-bit signed / double).
@@ -34,16 +30,16 @@ public:
     // extraProperties: optional additional unit properties (key -> value).
     bool startTransient(const std::vector<std::string>& execArgs,
                         const std::map<std::string, std::string>& environment,
-                        const std::map<std::string, UnitPropertyValue>& extraProperties, Error* error = nullptr);
+                        const std::map<std::string, UnitPropertyValue>& extraProperties, wallpaper_engine::Error* error = nullptr);
 
-    bool start(Error* error = nullptr);
-    bool stop(Error* error = nullptr);
-    bool restart(Error* error = nullptr);
-    bool resetFailed(Error* error = nullptr);
+    bool start(wallpaper_engine::Error* error = nullptr);
+    bool stop(wallpaper_engine::Error* error = nullptr);
+    bool restart(wallpaper_engine::Error* error = nullptr);
+    bool resetFailed(wallpaper_engine::Error* error = nullptr);
 
     // ActiveState per systemd: active / inactive / failed / activating.
     // A unit that is merely installed (not loaded) reads as inactive.
-    std::string activeState(Error* error = nullptr) const;
+    std::string activeState(wallpaper_engine::Error* error = nullptr) const;
     bool isActive() const;
 
 private:
@@ -51,11 +47,11 @@ private:
 };
 
 // Reload the user manager so freshly written unit files are picked up.
-bool daemonReload(Error* error = nullptr);
+bool daemonReload(wallpaper_engine::Error* error = nullptr);
 
 // True when the error is an acceptable outcome of an idempotent control
 // operation: success, a unit that does not exist, or systemd's "not loaded"
 // phrasing for the same situation.
-bool tolerated(const Error& error);
+bool tolerated(const wallpaper_engine::Error& error);
 
-} // namespace SystemdLayer
+} // namespace systemd

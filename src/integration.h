@@ -11,9 +11,8 @@
 // knowledge (peony today) lives behind that interface in
 // integration/peony.cpp.
 //
-// The UI surfaces this as a banner with a single "Set up integration"
-// button; setup re-runs are safe and act as self-healing (e.g. after the
-// session respawns the shell without injection).
+// Setup re-runs are safe and act as self-healing (e.g. after the session
+// respawns the shell without injection).
 //
 // Terminology: the deployed library is an interposer ("the shim"), not a
 // code patch — see src/shim/peony-alpha.cpp for the precise mechanism.

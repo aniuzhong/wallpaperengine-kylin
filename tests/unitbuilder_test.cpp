@@ -7,7 +7,7 @@
 
 #include <algorithm>
 
-using namespace SystemdLayer;
+using namespace systemd;
 
 namespace {
 std::vector<std::string> joinArgs(const std::vector<std::string>& args) {

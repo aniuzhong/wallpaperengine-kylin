@@ -391,7 +391,7 @@ public:
         // auto-restart job and the StartTransientUnit below would hit
         // "already exists". The manager's stop is asynchronous, so the
         // switch-over waits for the unit to actually leave active state.
-        SystemdLayer::SystemdUnit peonyUnit("wallpaper-engine-peony");
+        systemd::SystemdUnit peonyUnit("wallpaper-engine-peony");
         peonyUnit.stop();
         for (int waited = 0; waited < 5000; waited += 200) {
             const std::string state = peonyUnit.activeState();
@@ -423,7 +423,7 @@ public:
             return false;
         }
         const std::string logPath = dataDir() + "/peony-alpha.log";
-        SystemdLayer::Error unitError;
+        wallpaper_engine::Error unitError;
         const std::map<std::string, std::string> peonyEnv = Peony::buildShimEnvironment(shimPath, wallpaperList);
         if (!peonyUnit.startTransient({"/usr/bin/peony-qt-desktop", "-w", "-d"}, peonyEnv, {}, &unitError)) {
             // the typed D-Bus error survives to the caller: kind and error name
@@ -472,7 +472,7 @@ public:
         const bool injected = existingPid != 0 && shimMapped(existingPid);
 
         if (injected) {
-            SystemdLayer::SystemdUnit peonyUnit("wallpaper-engine-peony");
+            systemd::SystemdUnit peonyUnit("wallpaper-engine-peony");
             // stop the supervisor first: killing peony while
             // Restart=on-failure is watching would only bring it back
             peonyUnit.stop();

@@ -6,7 +6,7 @@
 // Pure functions of the systemd layer: turn argv into ExecStart text and
 // back, and decompose argv into StartTransientUnit property structures.
 // No bus access, no wallpaper knowledge — fully unit-testable.
-namespace SystemdLayer {
+namespace systemd {
 
 // systemd ExecStart entry: (path, argv, ignore-failure), i.e. type (sasb).
 struct ExecCommand {
@@ -31,4 +31,4 @@ std::string escapeExecArg(const std::string& arg);
 // and is dropped.
 std::vector<std::string> parseExecArgs(const std::string& line);
 
-} // namespace SystemdLayer
+} // namespace systemd
