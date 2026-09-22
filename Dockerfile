@@ -100,22 +100,6 @@ RUN /tmp/build-deb.sh \
         --version "${DEB_VERSION}" \
         --output /pkg.deb
 
-
-ARG DEB_VERSION=0.1.0
-
-COPY packaging/deb /tmp/deb-control
-RUN mkdir -p /deb/DEBIAN /deb/usr/share/doc/wallpaper-engine-kylin \
- && cp /tmp/deb-control/control /deb/DEBIAN/control \
- && sed -i "s/@VERSION@/${DEB_VERSION}/" /deb/DEBIAN/control \
- && for s in postinst prerm postrm preinst; do \
-        if [ -f "/tmp/deb-control/$s" ]; then \
-            cp "/tmp/deb-control/$s" /deb/DEBIAN/$s; chmod 755 /deb/DEBIAN/$s; \
-        fi; \
-    done \
- && cp /tmp/deb-control/copyright /deb/usr/share/doc/wallpaper-engine-kylin/copyright \
- && echo "Installed-Size: $(du -sk --apparent-size /deb | cut -f1)" >> /deb/DEBIAN/control \
- && dpkg-deb --build --root-owner-group /deb /pkg.deb
-
 # ---------------------------------------------------------------------- test
 # Pure-logic unit tests (T0): no bus, no display. The systemd/shim
 # integration suites self-skip without a session bus.
