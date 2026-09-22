@@ -8,3 +8,6 @@ third_party/
 .cache/
 
 .claude/
+
+# packaging artifacts
+/deb/*.deb

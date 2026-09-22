@@ -6,3 +6,5 @@ build/
 tmp/
 README.md
 third_party/
+# built packages never belong in the build context
+**/*.deb

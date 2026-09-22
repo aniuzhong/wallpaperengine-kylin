@@ -28,13 +28,23 @@ FetchContent_MakeAvailable(nlohmann_json)
 # Result<T, E> for the systemd module (src/systemd_unit.h): std::expected
 # backported to C++17, single header. Errors travel as values; see the
 # module header for the convention.
+#
+# Populated, not MakeAvailable: tl's own CMakeLists carries unconditional
+# install() rules, and MakeAvailable would teach `cmake --install` to ship
+# its headers and package config into our payload — the deb is not tl's
+# distribution channel. A header-only library needs an imported interface
+# target and nothing else.
 FetchContent_Declare(tl_expected
     GIT_REPOSITORY https://github.com/TartanLlama/expected.git
     GIT_TAG v1.1.0
     GIT_SHALLOW TRUE)
-set(EXPECTED_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(EXPECTED_BUILD_PACKAGE OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(tl_expected)
+FetchContent_GetProperties(tl_expected)
+if(NOT tl_expected_POPULATED)
+    FetchContent_Populate(tl_expected)
+    add_library(tl_expected_headers INTERFACE)
+    target_include_directories(tl_expected_headers INTERFACE "${tl_expected_SOURCE_DIR}/include")
+    add_library(tl::expected ALIAS tl_expected_headers)
+endif()
 
 # ---- wallpaper_service
 # Control core (frontend-free): the generic systemd D-Bus client plus the

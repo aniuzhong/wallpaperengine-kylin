@@ -83,17 +83,23 @@ RUN cmake -S /int -B /build/integration -DCMAKE_BUILD_TYPE=Release \
  && mkdir -p /deb/opt/wallpaper-engine \
  && cp -a /build/integration/payload/. /deb/opt/wallpaper-engine/
 
-# Smoke check: artifacts exist and every dynamic library resolves in the
-# container (same userland as the target desktops)
-# NOTE: upstream installs a FLAT layout (PREFIX/linux-wallpaperengine, no bin/)
-RUN test -x /deb/opt/wallpaper-engine/linux-wallpaperengine \
- && test -x /deb/opt/wallpaper-engine/bin/wallpaper-engine \
- && test -f /deb/opt/wallpaper-engine/lib/libpeony-alpha.so \
- && ! ldd /deb/opt/wallpaper-engine/linux-wallpaperengine | grep -q "not found"
-
 # ----------------------------------------------------------------------- deb
-# Assemble the package from the payload tree plus the maintainer scripts.
+# Assemble the package from the payload tree plus the deb/ data files. The
+# recipe — preflight, control, maintainer scripts, the .deb itself — is
+# scripts/build-deb.sh, the same script a Kylin host uses for a local
+# build; Docker is not a special case, it only builds the payload.
 FROM builder AS deb
+
+ARG DEB_VERSION=0.1.0
+
+COPY deb /tmp/deb
+COPY scripts/build-deb.sh /tmp/build-deb.sh
+RUN /tmp/build-deb.sh \
+        --payload /deb \
+        --data /tmp/deb \
+        --version "${DEB_VERSION}" \
+        --output /pkg.deb
+
 
 ARG DEB_VERSION=0.1.0
 
