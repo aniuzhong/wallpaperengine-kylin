@@ -2,6 +2,7 @@
 
 #include "argvbuilder.h"
 #include "config.h"
+#include "engine.h"
 #include "paths.h"
 #include "engine_unit.h"
 #include "integration.h"
@@ -173,10 +174,17 @@ int CmdSwitch(const std::vector<std::string>& args, bool json) {
 
 int CmdProperties(const std::string& id) {
     const config::Config config = config::Config::Load();
+    // the engine model's second consumer: same grammar, same emission — no
+    // hand-built argv. The positional wallpaper id rides in the invocation.
+    engine::Invocation invocation;
+    invocation.assetsDir = config.assetsDir;
+    invocation.backgroundId = id;
+    invocation.listProperties = true;
+
     std::string output;
     bool timedOut = false;
     const int exitCode = process::RunCaptured(
-        config.enginePath, {"--list-properties", "--assets-dir", config.assetsDir, id},
+        config.enginePath, engine::Emit(invocation),
         std::chrono::seconds(30), &output, &timedOut);
     // the engine's own listing, verbatim: buffered rather than streamed so a
     // frontend can publish it as one value

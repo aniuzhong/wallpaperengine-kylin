@@ -1,6 +1,7 @@
 #include "unit_file.h"
 
 #include "argvbuilder.h"
+#include "engine.h"
 #include "exec_args.h"
 #include "paths.h"
 #include "posix.h"
@@ -91,6 +92,22 @@ std::map<std::string, std::string> Backgrounds(const std::string& unit) {
 }
 
 we::Result<void> Install(const config::Config& config, const std::string& unit) {
+    // front-load the engine's constraints: an invocation the engine would
+    // refuse must fail here, with the rule named, instead of installing a
+    // unit that dies on start. One diagnostic per line in the message.
+    const engine::Invocation invocation = argvbuilder::Project(config);
+    const std::vector<engine::Diagnostic> problems = engine::Validate(invocation);
+    if (!problems.empty()) {
+        we::Error error;
+        error.kind = we::Error::InvalidInput;
+        for (const engine::Diagnostic& problem : problems) {
+            if (!error.message.empty())
+                error.message += "; ";
+            error.message += problem.flag.empty() ? problem.problem : problem.flag + ": " + problem.problem;
+        }
+        return tl::unexpected(std::move(error));
+    }
+
     const char* xauthority = getenv("XAUTHORITY");
     const std::string auth = (xauthority != nullptr && *xauthority != '\0') ? xauthority : "";
 

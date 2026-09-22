@@ -106,6 +106,7 @@ endif()
 add_library(wallpaper_service STATIC
     src/systemd_unit.cpp
     src/exec_args.cpp
+    src/engine.cpp
     src/config.cpp
     src/argvbuilder.cpp
     src/library.cpp
