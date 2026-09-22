@@ -71,8 +71,10 @@ produces the .deb. The Kylin base image is provisioned by
     src/                    service layer (Qt-free) and the CLI
     src/integration/        the peony desktop-shell integration
     src/shim/               libpeony-alpha.so, the LD_PRELOAD interposer
-    deb/                    packaging data (control, maintainer scripts);
-                            the built .deb lands here, gitignored
+    deb/                    packaging data (copyright, maintainer scripts);
+                            the deb's control fields live in CMakeLists.txt's
+                            packaging section; the built .deb lands here,
+                            gitignored
     scripts/                build-deb.sh (deb assembly), extract-base.sh
                             (base-image provisioning)
     icon/                   the project icon (the README header)

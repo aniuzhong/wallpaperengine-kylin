@@ -164,12 +164,62 @@ if(BUILD_ENGINE)
             ${_ENGINE_ARGS}
         )
     endif()
+    # The engine installs into its own payload prefix at build time; fold it
+    # into this project's install rules so one `cmake --install` (and the
+    # cpack run in scripts/build-deb.sh) stages the complete deb payload.
+    install(DIRECTORY ${CMAKE_BINARY_DIR}/payload/
+            DESTINATION . USE_SOURCE_PERMISSIONS)
 endif()
 
 # ---- install
 install(TARGETS wallpaper-engine peony-alpha
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib)
+install(FILES deb/copyright DESTINATION share/doc/wallpaper-engine-kylin)
+
+# ---- packaging
+# The deb is CPack's DEB generator: scripts/build-deb.sh stages this
+# project's install rules into a scratch prefix, runs the payload preflight
+# against it, then hands the version to `cpack -R`. deb/ keeps only what
+# CPack cannot generate — the maintainer scripts and the copyright file;
+# deb/control was retired, its fields live in this block.
+#
+# Depends is the audited list from the retired control file. shlibdeps stays
+# off: it would probe the build container's library set, not Kylin's.
+set(CPACK_PACKAGE_NAME "wallpaper-engine-kylin")
+set(CPACK_PACKAGE_VERSION "0.1.0-dev") # overridden per build with cpack -R
+set(CPACK_PACKAGE_VENDOR "Aniuzhong")
+set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/aniuzhong/wallpaperengine-kylin")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+    "Wallpaper Engine wallpapers on Kylin V10 SP1 (linux-wallpaperengine)")
+set(CPACK_DEBIAN_PACKAGE_DESCRIPTION
+    "Repackaging of linux-wallpaperengine for Kylin V10 SP1 with UKUI desktop
+ integration: renders Steam Workshop wallpapers as the desktop background.
+ Includes the peony interposition shim for transparent desktop icon support.
+ The engine binary and libraries install under /opt/wallpaper-engine;
+ the wallpaper runs under the user's own systemd session (no root service).")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER
+    "Aniuzhong <101186392+aniuzhong@users.noreply.github.com>")
+set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/aniuzhong/wallpaperengine-kylin")
+set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
+set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
+set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS
+    "libavcodec58, libavformat58, libavutil56, libdbus-1-3, libfreetype6, libglew2.1, libglfw3, libgl1, liblz4-1, libmpv1, libpng16-16, libpulse0, libsdl2-2.0-0, libswresample3, libsystemd0, libx11-6, libxcb-randr1, libxcb1, libxrandr2")
+set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF)
+# <pkg>_<version>_<arch>.deb, assembled at packaging time from the version
+# cpack -R passes in (cmake 3.16 has no default here — without it the name
+# falls back to the generic dash style)
+set(CPACK_DEBIAN_FILE_NAME "DEB-DEFAULT")
+set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
+    "${CMAKE_SOURCE_DIR}/deb/postinst;${CMAKE_SOURCE_DIR}/deb/prerm")
+# 0755 on the maintainer scripts regardless of how git checked them out
+set(CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION YES)
+# every relative install() destination hangs off the deb prefix; the
+# copyright rides along under it
+set(CPACK_PACKAGING_INSTALL_PREFIX "/opt/wallpaper-engine")
+set(CPACK_STRIP_FILES YES)
+include(CPack)
 
 # ---- tests (off for the deb integration build stage, which has no tests/)
 option (BUILD_TESTING "Build the test tree" ON)

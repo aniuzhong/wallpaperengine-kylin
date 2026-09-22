@@ -72,31 +72,28 @@ COPY src/ /int/src/
 COPY patches/ /int/patches/
 
 # One cmake entry for everything: engine (seeded tree) + controller + shim.
-# Engine installs into the payload prefix and is merged into the deb tree
-# below; the controller and shim install straight into it.
+# The engine's payload joins the deb through the project's own install rules
+# (CMakeLists, BUILD_ENGINE branch); scripts/build-deb.sh stages them all
+# and hands the tree to cpack.
 RUN cmake -S /int -B /build/integration -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=/deb/opt/wallpaper-engine \
         -DBUILD_ENGINE=ON \
         -DBUILD_TESTING=OFF \
- && cmake --build /build/integration -j"$(nproc)" \
- && cmake --install /build/integration \
- && mkdir -p /deb/opt/wallpaper-engine \
- && cp -a /build/integration/payload/. /deb/opt/wallpaper-engine/
+ && cmake --build /build/integration -j"$(nproc)"
 
 # ----------------------------------------------------------------------- deb
-# Assemble the package from the payload tree plus the deb/ data files. The
-# recipe — preflight, control, maintainer scripts, the .deb itself — is
-# scripts/build-deb.sh, the same script a Kylin host uses for a local
-# build; Docker is not a special case, it only builds the payload.
+# Assemble the package: stage the install rules, preflight them, cpack. The
+# recipe is scripts/build-deb.sh — the same script a Kylin host uses for a
+# local build; Docker is not a special case, it only builds the payload.
 FROM builder AS deb
 
 ARG DEB_VERSION=0.1.0
 
-COPY deb /tmp/deb
+# CPackConfig.cmake embeds the source dir, so the deb data must live in it
+COPY deb /int/deb
 COPY scripts/build-deb.sh /tmp/build-deb.sh
 RUN /tmp/build-deb.sh \
-        --payload /deb \
-        --data /tmp/deb \
+        --build /build/integration \
+        --data /int/deb \
         --version "${DEB_VERSION}" \
         --output /pkg.deb
 
