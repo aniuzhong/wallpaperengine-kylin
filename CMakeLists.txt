@@ -46,6 +46,25 @@ if(NOT tl_expected_POPULATED)
     add_library(tl::expected ALIAS tl_expected_headers)
 endif()
 
+# fmt for the shim's log formatting (src/shim/peony-alpha.cpp): the shim's
+# one deliberate third-party payload, header-only through an interface
+# target — same Populate-not-MakeAvailable reasoning as tl::expected, fmt's
+# install() rules must not reach the deb. FMT_HEADER_ONLY compiles it into
+# the single shim TU, where -fvisibility=hidden keeps every emitted symbol
+# out of the interposition ABI.
+FetchContent_Declare(fmt
+    GIT_REPOSITORY https://github.com/fmtlib/fmt.git
+    GIT_TAG 11.1.4
+    GIT_SHALLOW TRUE)
+FetchContent_GetProperties(fmt)
+if(NOT fmt_POPULATED)
+    FetchContent_Populate(fmt)
+    add_library(fmt_headers INTERFACE)
+    target_include_directories(fmt_headers INTERFACE "${fmt_SOURCE_DIR}/include")
+    target_compile_definitions(fmt_headers INTERFACE FMT_HEADER_ONLY=1)
+    add_library(fmt::fmt ALIAS fmt_headers)
+endif()
+
 # ---- wallpaper_service
 # Control core (frontend-free): the generic systemd D-Bus client plus the
 # wallpaper domain logic (config persistence, argv mapping, library scan,
@@ -93,7 +112,7 @@ add_library(peony-alpha SHARED
 )
 target_compile_options(peony-alpha PRIVATE -O2 -Wall -fPIC -fvisibility=hidden)
 target_include_directories(peony-alpha PRIVATE ${Qt5Gui_INCLUDE_DIRS} ${X11_INCLUDE_DIR} ${XCB_INCLUDE_DIRS})
-target_link_libraries(peony-alpha PRIVATE ${X11_LIBRARIES} ${XCB_LIBRARIES} dl)
+target_link_libraries(peony-alpha PRIVATE ${X11_LIBRARIES} ${XCB_LIBRARIES} fmt::fmt dl)
 
 # ---- engine (optional)
 # Two equivalent acquisition paths, everything stays inside build/:

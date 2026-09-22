@@ -55,9 +55,9 @@
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 
+#include <fmt/format.h>
+
 #include <cerrno>
-#include <cstdarg>
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -85,15 +85,17 @@
 //     crash-restart loop then reads as distinct generations instead of one
 //     undifferentiated stream, and the timestamps line up with
 //     journalctl -u wallpaper-engine-peony;
-//   - one write() per line, sized to stay within the pipe-buffer budget, so
-//     concurrent processes cannot interleave mid-line;
+//   - formatting goes through fmt (header-only, fetched at configure time;
+//     the shim's one deliberate third-party payload) into a memory_buffer
+//     whose ~500-byte inline storage keeps normal lines allocation-free,
+//     and a bad format string is a compile error, never a runtime one;
+//   - one write() per line, so concurrent processes cannot interleave
+//     mid-line;
 //   - write failures are swallowed: losing a debug line beats disturbing
 //     the host, and an unresolvable or unwritable destination disables
 //     logging entirely.
 
 namespace {
-
-constexpr size_t kLogLineMax = 512;
 
 // The one log destination: the peony backend's data dir, the same shape
 // integration/peony.cpp computes (README "Names" — the file belongs to the
@@ -125,42 +127,28 @@ int log_fd() {
     return fd;
 }
 
-void shim_log(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
-
-void shim_log(const char* fmt, ...) {
+template <typename... Args>
+void shim_log(fmt::format_string<Args...> format, Args&&... args) {
     const int fd = log_fd();
     if (fd < 0)
         return;
 
     timespec now {};
     clock_gettime(CLOCK_REALTIME, &now);
-    char line[kLogLineMax];
-    const int prefix = snprintf(line, sizeof line, "%lld.%03ld [pid %ld] ", static_cast<long long>(now.tv_sec),
-                                now.tv_nsec / 1000000L, static_cast<long>(getpid()));
-    if (prefix <= 0 || static_cast<size_t>(prefix) >= sizeof line)
-        return;
-
-    va_list ap;
-    va_start(ap, fmt);
-    const int body = vsnprintf(line + prefix, sizeof line - prefix, fmt, ap);
-    va_end(ap);
-    if (body <= 0)
-        return;
-
-    // vsnprintf returns the would-be length; clamp a truncated line, then
-    // end with exactly one newline whatever the caller passed
-    size_t length = prefix + static_cast<size_t>(body);
-    if (length >= sizeof line)
-        length = sizeof line - 1;
-    if (line[length - 1] != '\n') {
-        if (length + 1 >= sizeof line)
-            length = sizeof line - 2;
-        line[length++] = '\n';
-    }
+    fmt::memory_buffer buffer;
+    fmt::format_to(fmt::appender(buffer), "{:d}.{:03d} [pid {:d}] ", static_cast<long long>(now.tv_sec),
+                   now.tv_nsec / 1000000L, static_cast<long>(getpid()));
+    // vformat_to, not format_to: the pack's value categories would make
+    // format_to's own deduction disagree with the checked one at this
+    // boundary (an rvalue argument deduces Args by value here but Args&&
+    // as an lvalue there)
+    fmt::vformat_to(fmt::appender(buffer), format, fmt::make_format_args(args...));
+    if (buffer.size() == 0 || buffer[buffer.size() - 1] != '\n')
+        buffer.push_back('\n');
 
     size_t written = 0;
-    while (written < length) {
-        const ssize_t n = write(fd, line + written, length - written);
+    while (written < buffer.size()) {
+        const ssize_t n = write(fd, buffer.data() + written, buffer.size() - written);
         if (n < 0) {
             if (errno == EINTR)
                 continue;
@@ -191,7 +179,7 @@ bool shim_enabled() {
 // The library is already mapped by the time this constructor runs, so
 // dropping the variable costs the desktop nothing and spares every child.
 __attribute__((constructor)) static void shim_drop_preload_for_children() {
-    shim_log("[shim] interposer mapped, enabled=%d\n", shim_enabled() ? 1 : 0);
+    shim_log("[shim] interposer mapped, enabled={}\n", shim_enabled() ? 1 : 0);
     unsetenv("LD_PRELOAD");
     shim_log("[shim] dropped LD_PRELOAD so children load clean\n");
 }
@@ -253,7 +241,7 @@ void nullify_if_wallpaper(QPixmap* pm, const QString& file_name) {
         QPixmap transparent(pm->size());
         transparent.fill(Qt::transparent);
         *pm = transparent;
-        shim_log("[shim] nullified wallpaper pixmap: %s (%dx%d)\n", file_name.toUtf8().constData(),
+        shim_log("[shim] nullified wallpaper pixmap: {} ({}x{})\n", file_name.toUtf8().constData(),
                  pm->size().width(), pm->size().height());
     }
 }
@@ -312,7 +300,7 @@ void ensure_atoms(xcb_connection_t* c) {
                 free(r);
             }
         }
-        shim_log("[shim] xcb atoms ready (type=%lu desktop=%lu normal=%lu state=%lu below=%lu)\n",
+        shim_log("[shim] xcb atoms ready (type={} desktop={} normal={} state={} below={})\n",
                  (unsigned long)a_wm_type, (unsigned long)a_type_desktop, (unsigned long)a_type_normal,
                  (unsigned long)a_wm_state, (unsigned long)a_state_below);
         return true;
@@ -345,7 +333,7 @@ xcb_change_property(xcb_connection_t* c, uint8_t mode, xcb_window_t window, xcb_
                 }
             }
             if (changed) {
-                shim_log("[shim] win 0x%x: WINDOW_TYPE DESKTOP -> NORMAL\n", window);
+                shim_log("[shim] win 0x{:x}: WINDOW_TYPE DESKTOP -> NORMAL\n", window);
                 return real_xcb_ccp(c, mode, window, property, type, format, data_len, buf);
             }
         } else if (property == a_wm_state) {
@@ -356,7 +344,7 @@ xcb_change_property(xcb_connection_t* c, uint8_t mode, xcb_window_t window, xcb_
                 xcb_atom_t buf[33];
                 memcpy(buf, data, data_len * 4);
                 buf[data_len++] = a_state_below;
-                shim_log("[shim] win 0x%x: appended STATE BELOW (%u atoms)\n", window, data_len);
+                shim_log("[shim] win 0x{:x}: appended STATE BELOW ({} atoms)\n", window, data_len);
                 return real_xcb_ccp(c, mode, window, property, type, format, data_len, buf);
             }
         }
@@ -406,7 +394,7 @@ XChangeProperty(Display* display, Window w, Atom property, Atom type, int format
                 }
             }
             if (changed) {
-                shim_log("[shim] xlib win 0x%lx: DESKTOP -> NORMAL\n", (unsigned long)w);
+                shim_log("[shim] xlib win 0x{:x}: DESKTOP -> NORMAL\n", (unsigned long)w);
                 return real_xlib_ccp(display, w, property, type, format, mode, (unsigned char*)buf, nelements);
             }
         } else if (type == XA_ATOM && property == x_wm_state) {
@@ -419,7 +407,7 @@ XChangeProperty(Display* display, Window w, Atom property, Atom type, int format
                 for (int i = 0; i < nelements; i++)
                     buf[i] = in[i];
                 buf[nelements++] = (unsigned long)x_state_below;
-                shim_log("[shim] xlib win 0x%lx: appended BELOW\n", (unsigned long)w);
+                shim_log("[shim] xlib win 0x{:x}: appended BELOW\n", (unsigned long)w);
                 return real_xlib_ccp(display, w, property, type, format, mode, (unsigned char*)buf, nelements);
             }
         }
