@@ -46,9 +46,10 @@ Qt is build-time only — the shim compiles against Qt headers (resolved from
 the host peony process at load time) and the tests use QtTest. The shipped
 binaries link no Qt at all.
 
-Build dependencies: Qt5 Core/Gui, xcb-randr, libpng, libsystemd. Four more
-are fetched over git at configure time: nlohmann/json, tl::expected, fmt
-(the shim's log formatting), and reproc (child processes).
+Build dependencies: Qt5 Core/Gui, xcb-randr, freetype2, libpng, libsystemd.
+Five more are fetched over git at configure time: nlohmann/json,
+tl::expected, fmt (the shim's log formatting), reproc (child processes),
+and stb (the marker's PNG encoding).
 
     cmake -S . -B build
     cmake --build build

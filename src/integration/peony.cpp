@@ -43,7 +43,7 @@ std::string dataDir() {
 }
 
 std::string markerPath() {
-    return dataDir() + "/marker.bmp";
+    return dataDir() + "/marker.png";
 }
 
 // The size the marker is rendered at: the primary output's current mode,

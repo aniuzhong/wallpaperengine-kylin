@@ -15,6 +15,8 @@ find_package(Threads REQUIRED)
 pkg_check_modules(XCB REQUIRED xcb)
 pkg_check_modules(XCB_RANDR REQUIRED xcb-randr)
 pkg_check_modules(LIBSYSTEMD REQUIRED libsystemd)
+# the marker's text rendering (src/integration/marker.cpp)
+pkg_check_modules(FREETYPE REQUIRED freetype2)
 
 # JSON for the config file: fetched at configure time, pinned to a release
 # tag — git over HTTPS, the same path the engine fetch uses.
@@ -79,6 +81,22 @@ FetchContent_Declare(reproc
     GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(reproc)
 
+# stb_image_write for the marker's PNG encoding (src/integration/marker.cpp).
+# nothings/stb has no release tags at all — pin a commit and name the header
+# version it carries; and it has no CMakeLists, so Populate + INTERFACE (the
+# tl::expected pattern) is the only integration there is. Only the write
+# half is used: stb_image's decoder has no consumer in this tree.
+FetchContent_Declare(stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG 2c980bb59875b0d32144a71867fbdebb2f77cd20) # stb_image_write 1.16
+FetchContent_GetProperties(stb)
+if(NOT stb_POPULATED)
+    FetchContent_Populate(stb)
+    add_library(stb_headers INTERFACE)
+    target_include_directories(stb_headers INTERFACE "${stb_SOURCE_DIR}")
+    add_library(stb::stb ALIAS stb_headers)
+endif()
+
 # ---- wallpaper_service
 # Control core (frontend-free): the generic systemd D-Bus client plus the
 # wallpaper domain logic (config persistence, argv mapping, library scan,
@@ -100,8 +118,8 @@ add_library(wallpaper_service STATIC
     src/display.cpp
     src/unit_file.cpp
 )
-target_include_directories(wallpaper_service PUBLIC src ${XCB_RANDR_INCLUDE_DIRS})
-target_link_libraries(wallpaper_service PUBLIC nlohmann_json::nlohmann_json tl::expected reproc++ ${XCB_LIBRARIES} ${XCB_RANDR_LIBRARIES} ${LIBSYSTEMD_LIBRARIES})
+target_include_directories(wallpaper_service PUBLIC src ${XCB_RANDR_INCLUDE_DIRS} ${FREETYPE_INCLUDE_DIRS})
+target_link_libraries(wallpaper_service PUBLIC nlohmann_json::nlohmann_json tl::expected reproc++ stb::stb ${FREETYPE_LIBRARIES} ${XCB_LIBRARIES} ${XCB_RANDR_LIBRARIES} ${LIBSYSTEMD_LIBRARIES})
 target_compile_options(wallpaper_service PRIVATE -Wall -Wextra)
 
 # ---- wallpaper-engine

@@ -22,9 +22,11 @@ add_executable (library_test library_test.cpp ../src/library.cpp)
 target_link_libraries (library_test PRIVATE Qt5::Core Qt5::Test nlohmann_json::nlohmann_json)
 add_test (NAME library_test COMMAND library_test)
 
-# T0: the integration marker's rendering half (BMP structure, determinism)
+# T0: the integration marker's rendering half (PNG structure, contrast,
+# determinism)
 add_executable (marker_test marker_test.cpp ../src/integration/marker.cpp)
-target_link_libraries (marker_test PRIVATE Qt5::Core Qt5::Test tl::expected)
+target_link_libraries (marker_test PRIVATE Qt5::Core Qt5::Gui Qt5::Test tl::expected stb::stb ${FREETYPE_LIBRARIES})
+target_include_directories (marker_test PRIVATE ${FREETYPE_INCLUDE_DIRS})
 add_test (NAME marker_test COMMAND marker_test)
 
 # T0: JSON projections of service data (pure) — the wire contract the CLI
