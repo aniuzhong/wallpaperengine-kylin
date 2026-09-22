@@ -65,6 +65,20 @@ if(NOT fmt_POPULATED)
     add_library(fmt::fmt ALIAS fmt_headers)
 endif()
 
+# reproc for the service layer's child processes (src/process.cpp): start +
+# drain + deadline + stop replace the hand-rolled fork/exec/poll loop. This
+# is a MakeAvailable, unlike tl::expected above, because reproc guards all
+# of its install rules behind REPROC_INSTALL — with it off, nothing of
+# reproc's reaches the deb payload. The C++ wrapper (reproc++) carries the
+# drain/sink API the runners use.
+set(REPROC_INSTALL OFF)
+set(REPROC++ ON)
+FetchContent_Declare(reproc
+    GIT_REPOSITORY https://github.com/DaanDeMeyer/reproc.git
+    GIT_TAG v14.2.7
+    GIT_SHALLOW TRUE)
+FetchContent_MakeAvailable(reproc)
+
 # ---- wallpaper_service
 # Control core (frontend-free): the generic systemd D-Bus client plus the
 # wallpaper domain logic (config persistence, argv mapping, library scan,
@@ -87,7 +101,7 @@ add_library(wallpaper_service STATIC
     src/unit_file.cpp
 )
 target_include_directories(wallpaper_service PUBLIC src ${XCB_RANDR_INCLUDE_DIRS})
-target_link_libraries(wallpaper_service PUBLIC nlohmann_json::nlohmann_json tl::expected ${XCB_LIBRARIES} ${XCB_RANDR_LIBRARIES} ${LIBSYSTEMD_LIBRARIES})
+target_link_libraries(wallpaper_service PUBLIC nlohmann_json::nlohmann_json tl::expected reproc++ ${XCB_LIBRARIES} ${XCB_RANDR_LIBRARIES} ${LIBSYSTEMD_LIBRARIES})
 target_compile_options(wallpaper_service PRIVATE -Wall -Wextra)
 
 # ---- wallpaper-engine

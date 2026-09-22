@@ -2,15 +2,24 @@
 
 #include "posix.h"
 
-#include <cerrno>
-#include <csignal>
-#include <cstdio>
-#include <cstring>
+#include <string>
+#include <system_error>
+#include <tuple>
+#include <utility>
 #include <vector>
 
-#include <poll.h>
+#include <reproc++/drain.hpp>
+#include <reproc++/reproc.hpp>
+
 #include <sys/wait.h>
 #include <unistd.h>
+
+// Child processes run through reproc (fetched at configure time): start +
+// drain + deadline instead of a hand-rolled fork/exec/poll loop — reproc's
+// child side reports exec failures back over a pipe instead of the _exit(127)
+// convention, and its drain enforces the deadline while polling. The one
+// thing reproc does not provide is detach, so SpawnDetached keeps its own
+// double fork + setsid.
 
 namespace process {
 
@@ -19,116 +28,72 @@ int RunCaptured(const std::string& program, const std::vector<std::string>& args
     if (timedOut != nullptr)
         *timedOut = false;
 
-    int outPipe[2] = { -1, -1 };
-    int errPipe[2] = { -1, -1 };
-    if (pipe(outPipe) != 0)
-        return -1;
-    if (pipe(errPipe) != 0) {
-        close(outPipe[0]);
-        close(outPipe[1]);
+    std::vector<std::string> argv;
+    argv.push_back(program);
+    argv.insert(argv.end(), args.begin(), args.end());
+
+    reproc::options options;
+    options.redirect.out.type = reproc::redirect::pipe;
+    options.redirect.err.type = reproc::redirect::pipe;
+    options.deadline = std::chrono::duration_cast<reproc::milliseconds>(timeout);
+
+    reproc::process child;
+    if (std::error_code ec = child.start(argv, options))
+        return -1; // spawn failed, or the exec failed and reproc reported it
+
+    // Both streams append into one buffer in arrival order, like the polled
+    // pipe loop this replaces; whatever was read before a timeout survives.
+    auto append = [output](reproc::stream stream, const uint8_t* buffer,
+                           size_t size) -> std::error_code {
+        (void) stream;
+        if (output != nullptr && size > 0)
+            output->append(reinterpret_cast<const char*>(buffer), size);
+        return {};
+    };
+    const std::error_code drained = reproc::drain(child, append, append);
+
+    if (drained) {
+        // The deadline (errc::timed_out) or a poll failure: drain has given
+        // up, so nothing but an explicit kill stands between the child and
+        // lingering forever.
+        if (timedOut != nullptr && drained == std::errc::timed_out)
+            *timedOut = true;
+        (void) child.kill();
+        (void) child.wait(reproc::milliseconds(1000));
         return -1;
     }
 
-    const pid_t pid = fork();
-    if (pid < 0) {
-        for (const int fd : { outPipe[0], outPipe[1], errPipe[0], errPipe[1] })
-            close(fd);
-        return -1;
-    }
-    if (pid == 0) {
-        dup2(outPipe[1], STDOUT_FILENO);
-        dup2(errPipe[1], STDERR_FILENO);
-        for (const int fd : { outPipe[0], outPipe[1], errPipe[0], errPipe[1] })
-            close(fd);
-        std::vector<char*> childArgs;
-        childArgs.push_back(const_cast<char*>(program.c_str()));
-        for (const std::string& arg : args)
-            childArgs.push_back(const_cast<char*>(arg.c_str()));
-        childArgs.push_back(nullptr);
-        execvp(program.c_str(), childArgs.data());
-        _exit(127); // exec failed
-    }
-
-    close(outPipe[1]);
-    close(errPipe[1]);
-    const long long timeoutMs = std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count();
-    const long long deadline = [] {
-        timespec now;
-        clock_gettime(CLOCK_MONOTONIC, &now);
-        return static_cast<long long>(now.tv_sec) * 1000 + now.tv_nsec / 1000000;
-    }() + timeoutMs;
-
-    int readers[2] = { outPipe[0], errPipe[0] };
-    int openReaders = 2;
-    char buffer[4096];
-    while (openReaders > 0) {
-        timespec now;
-        clock_gettime(CLOCK_MONOTONIC, &now);
-        const long long remaining =
-            deadline - (static_cast<long long>(now.tv_sec) * 1000 + now.tv_nsec / 1000000);
-        if (remaining <= 0) {
-            if (timedOut != nullptr)
-                *timedOut = true;
-            break;
-        }
-        pollfd fds[2] = { { readers[0], POLLIN, 0 }, { readers[1], POLLIN, 0 } };
-        const int ready = poll(fds, 2, static_cast<int>(remaining));
-        if (ready < 0) {
-            if (errno == EINTR)
-                continue;
-            break;
-        }
-        for (int i = 0; i < 2; i++) {
-            if ((fds[i].revents & (POLLIN | POLLHUP)) == 0)
-                continue;
-            const ssize_t n = read(readers[i], buffer, sizeof(buffer));
-            if (n <= 0) {
-                close(readers[i]);
-                readers[i] = -1;
-                openReaders--;
-                continue;
-            }
-            if (output != nullptr)
-                output->append(buffer, static_cast<size_t>(n));
-        }
-    }
-    for (const int fd : readers)
-        if (fd != -1)
-            close(fd);
-
-    const bool expired = timedOut != nullptr && *timedOut;
-    if (expired)
-        kill(pid, SIGKILL);
-    int status = 0;
-    waitpid(pid, &status, 0);
-    if (expired)
-        return -1;
-    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    // drain only returns cleanly once the child closed its pipes, so the
+    // exit status is already queued
+    int status = -1;
+    std::error_code ec;
+    std::tie(status, ec) = child.wait(reproc::infinite);
+    return ec ? -1 : status;
 }
 
 bool DidNotRun(int exitCode) {
-    // -1: spawn failed or the deadline killed it. 127: execvp could not run
-    // the path at all.
+    // -1: spawn failed, the deadline killed the child, or reading its output
+    // failed. (Exec failures surface as -1 too: reproc reports them through
+    // start instead of the old _exit(127) convention.)
     return exitCode == -1 || exitCode == 127;
 }
 
 int RunAndWait(const std::vector<std::string>& argv) {
     if (argv.empty())
         return -1;
-    const pid_t pid = fork();
-    if (pid < 0)
+
+    reproc::options options;
+    // the child keeps our stdout/stderr: a failing gsettings says why there
+    options.redirect.parent = true;
+
+    reproc::process child;
+    if (std::error_code ec = child.start(argv, options))
         return -1;
-    if (pid == 0) {
-        std::vector<char*> childArgs;
-        for (const std::string& arg : argv)
-            childArgs.push_back(const_cast<char*>(arg.c_str()));
-        childArgs.push_back(nullptr);
-        execvp(argv.front().c_str(), childArgs.data());
-        _exit(127); // exec failed
-    }
-    int status = 0;
-    waitpid(pid, &status, 0);
-    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+
+    int status = -1;
+    std::error_code ec;
+    std::tie(status, ec) = child.wait(reproc::infinite);
+    return ec ? -1 : status;
 }
 
 bool SpawnDetached(const std::vector<std::string>& argv) {
@@ -156,12 +121,12 @@ bool SpawnDetached(const std::vector<std::string>& argv) {
     if (argv.empty() || !executableExists(argv.front()))
         return false;
 
-    const pid_t pid = fork();
+    const pid_t pid = ::fork();
     if (pid < 0)
         return false;
     if (pid == 0) {
         setsid();
-        const pid_t grandchild = fork();
+        const pid_t grandchild = ::fork();
         if (grandchild != 0)
             _exit(grandchild < 0 ? 1 : 0);
 
