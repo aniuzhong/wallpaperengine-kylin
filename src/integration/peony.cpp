@@ -5,9 +5,7 @@
 #include "../posix.h"
 #include "../process.h"
 #include "../systemd_unit.h"
-
-#include <xcb/xcb.h>
-#include <xcb/randr.h>
+#include "../utils/xcbutils.h"
 
 #include <systemd/sd-bus.h>
 
@@ -47,51 +45,26 @@ std::string markerPath() {
 }
 
 // The size the marker is rendered at: the primary output's current mode,
-// so the drawn text comes out at native pixel density. Falls back to the
-// root geometry, then to 1080p when nothing answers (headless runs).
-std::pair<int, int> markerSize() {
+// so the drawn text comes out at native pixel density. Falls back to 1080p
+// when nothing answers (headless runs). The RandR walk rides on the
+// xcbutils port (KWin::Xcb) — the wrappers own the reply lifecycle, and the
+// crtc reply already carries the active mode's dimensions.
+std::pair<int, int> markerSize()
+{
     std::pair<int, int> size {1920, 1080};
-    xcb_connection_t* c = xcb_connect(nullptr, nullptr);
-    if (xcb_connection_has_error(c) != 0) {
-        xcb_disconnect(c);
+    KWin::Xcb::OutputPrimary primary(KWin::Xcb::rootWindow());
+    if (!primary) {
         return size;
     }
-    const xcb_screen_t* screen = xcb_setup_roots_iterator(xcb_get_setup(c)).data;
-    size = {static_cast<int>(screen->width_in_pixels), static_cast<int>(screen->height_in_pixels)};
-
-    xcb_randr_get_output_primary_reply_t* primary =
-        xcb_randr_get_output_primary_reply(c, xcb_randr_get_output_primary(c, screen->root), nullptr);
-    if (primary != nullptr) {
-        xcb_randr_get_output_info_reply_t* output = xcb_randr_get_output_info_reply(
-            c, xcb_randr_get_output_info(c, primary->output, XCB_CURRENT_TIME), nullptr);
-        if (output != nullptr && output->crtc != XCB_NONE) {
-            xcb_randr_get_crtc_info_reply_t* crtc =
-                xcb_randr_get_crtc_info_reply(c, xcb_randr_get_crtc_info(c, output->crtc, XCB_CURRENT_TIME), nullptr);
-            if (crtc != nullptr && crtc->mode != XCB_NONE) {
-                xcb_randr_get_screen_resources_current_reply_t* resources =
-                    xcb_randr_get_screen_resources_current_reply(
-                        c, xcb_randr_get_screen_resources_current(c, screen->root), nullptr);
-                if (resources != nullptr) {
-                    xcb_randr_mode_info_iterator_t it =
-                        xcb_randr_get_screen_resources_current_modes_iterator(resources);
-                    for (; it.rem; xcb_randr_mode_info_next(&it)) {
-                        if (it.data->id == crtc->mode) {
-                            size = {static_cast<int>(it.data->width), static_cast<int>(it.data->height)};
-                            break;
-                        }
-                    }
-                    free(resources);
-                }
-            }
-            if (crtc != nullptr)
-                free(crtc);
-        }
-        if (output != nullptr)
-            free(output);
-        free(primary);
+    KWin::Xcb::OutputInfo output(primary->output, XCB_CURRENT_TIME);
+    if (!output || output->crtc == XCB_NONE) {
+        return size;
     }
-    xcb_disconnect(c);
-    return size;
+    const KWin::Xcb::CrtcInfo::Rect rect = KWin::Xcb::CrtcInfo(output->crtc, XCB_CURRENT_TIME).rect();
+    if (rect.width == 0 || rect.height == 0) {
+        return size;
+    }
+    return {rect.width, rect.height};
 }
 
 // What the desktop's wallpaper was before setup pointed it at the marker.

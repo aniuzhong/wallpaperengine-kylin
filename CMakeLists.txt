@@ -113,6 +113,7 @@ add_library(wallpaper_service STATIC
     src/peonybuilder.cpp
     src/integration/marker.cpp
     src/integration/peony.cpp
+    src/utils/xcbutils.cpp
     src/engine_unit.cpp
     src/process.cpp
     src/display.cpp
