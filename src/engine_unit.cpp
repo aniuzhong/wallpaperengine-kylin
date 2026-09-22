@@ -11,7 +11,7 @@ namespace {
 
 // overridable for tests (WALLPAPER_ENGINE_UNIT=<name>)
 std::string UnitNameFromEnv() {
-    static const std::string name = wallpaper_engine::EnvOr("WALLPAPER_ENGINE_UNIT", "wallpaper-engine");
+    static const std::string name = we::EnvOr("WALLPAPER_ENGINE_UNIT", "wallpaper-engine");
     return name;
 }
 
@@ -37,26 +37,26 @@ std::map<std::string, std::string> UnitBackgrounds() {
     return unit_file::Backgrounds(UnitNameFromEnv());
 }
 
-wallpaper_engine::Result<void> WriteUnitFile(const Config& config) {
+we::Result<void> WriteUnitFile(const config::Config& config) {
     return unit_file::Install(config, UnitNameFromEnv());
 }
 
 // every lifecycle operation goes through the typed sd-bus layer — the
 // manager is addressed directly on the session bus, no systemctl subprocesses
-wallpaper_engine::Result<void> DaemonReload() {
+we::Result<void> DaemonReload() {
     return WithBus([](systemd::Connection& bus) { return systemd::DaemonReload(bus); });
 }
 
-wallpaper_engine::Result<void> StartUnit() {
+we::Result<void> StartUnit() {
     return WithBus([](systemd::Connection& bus) { return systemd::Start(bus, UnitNameFromEnv()); });
 }
 
-wallpaper_engine::Result<void> RestartUnit() {
+we::Result<void> RestartUnit() {
     return WithBus([](systemd::Connection& bus) { return systemd::Restart(bus, UnitNameFromEnv()); });
 }
 
-wallpaper_engine::Result<void> StopUnit() {
-    return WithBus([](systemd::Connection& bus) -> wallpaper_engine::Result<void> {
+we::Result<void> StopUnit() {
+    return WithBus([](systemd::Connection& bus) -> we::Result<void> {
         auto stopped = systemd::Stop(bus, UnitNameFromEnv());
         // stop/reset-failed on a unit that was never loaded already has the
         // desired end state: systemd reports NoSuchUnit ("not loaded",
@@ -68,8 +68,8 @@ wallpaper_engine::Result<void> StopUnit() {
     });
 }
 
-wallpaper_engine::Result<std::string> State() {
-    return WithBus([](systemd::Connection& bus) -> wallpaper_engine::Result<std::string> {
+we::Result<std::string> State() {
+    return WithBus([](systemd::Connection& bus) -> we::Result<std::string> {
         auto state = systemd::ActiveState(bus, UnitNameFromEnv());
         if (!state)
             return tl::unexpected(std::move(state).error());
@@ -95,7 +95,7 @@ std::vector<std::string> ScreenNames() {
     return names;
 }
 
-wallpaper_engine::Result<void> ApplyConfig(const Config& config) {
+we::Result<void> ApplyConfig(const config::Config& config) {
     // the one apply chain: persist the desired state, project it into the
     // unit file the manager runs, reload, restart. The first failing step
     // is the error the caller sees, and one bus connection spans the
@@ -104,7 +104,7 @@ wallpaper_engine::Result<void> ApplyConfig(const Config& config) {
         return saved;
     if (auto installed = WriteUnitFile(config); !installed)
         return installed;
-    return WithBus([](systemd::Connection& bus) -> wallpaper_engine::Result<void> {
+    return WithBus([](systemd::Connection& bus) -> we::Result<void> {
         if (auto reloaded = systemd::DaemonReload(bus); !reloaded)
             return reloaded;
         return systemd::Restart(bus, UnitNameFromEnv());

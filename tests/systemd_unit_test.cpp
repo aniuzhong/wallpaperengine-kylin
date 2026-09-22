@@ -174,8 +174,8 @@ private slots:
     void error_stopNonexistentUnitIsTyped() {
         auto result = systemd::Stop(*bus_, "wallpaper-engine-test-nonexistent-does-not-exist.service");
         QVERIFY(!result.has_value());
-        const wallpaper_engine::Error error = std::move(result).error();
-        QVERIFY(error.kind != wallpaper_engine::Error::NoError);
+        const we::Error error = std::move(result).error();
+        QVERIFY(error.kind != we::Error::NoError);
         QVERIFY(!error.dbusName.empty());
         QVERIFY(!error.message.empty());
         // Tolerated() keys off this exact name — pin it so a systemd
@@ -240,7 +240,7 @@ private slots:
         spec.unit = m_name;
         auto result = systemd::StartTransient(*bus_, spec);
         QVERIFY(!result.has_value());
-        QCOMPARE(result.error().kind, wallpaper_engine::Error::InvalidInput);
+        QCOMPARE(result.error().kind, we::Error::InvalidInput);
     }
 
     // ---- helpers -------------------------------------------------------------

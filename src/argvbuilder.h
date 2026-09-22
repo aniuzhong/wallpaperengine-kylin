@@ -5,6 +5,10 @@
 #include <string>
 #include <vector>
 
-// Pure mapping from Config to engine argv. Every flag emitted here
+namespace argvbuilder {
+
+// Pure mapping from config::Config to engine argv. Every flag emitted here
 // corresponds to one engine CLI argument — the CLI never invents options.
-std::vector<std::string> BuildArgv(const Config& config);
+std::vector<std::string> BuildArgv(const config::Config& config);
+
+} // namespace argvbuilder

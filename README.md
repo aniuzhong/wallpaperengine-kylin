@@ -89,3 +89,20 @@ camelCase for function-local variables (functions, types and namespaces are
 Google: PascalCase API, snake_case files, lowercase namespaces; `src/shim/`
 is exempt — its exported names are the interposition ABI). Docs say "the
 shim" for the interposer; new identifiers follow the Names grammar above.
+
+## Namespaces
+
+Three rules cover every declaration:
+
+1. the global namespace holds only `main()` and the shim's exported
+   interposition ABI — nothing else is ever added there;
+2. one domain module is one lowercase namespace (`systemd`, `config`,
+   `library`, `argvbuilder`, `cli`, `display`, `marker`, `peony`,
+   `integration`, `process`, `report`, `unit_file`, `engine_unit`,
+   `paths`); shared types and pure helpers live in `we::` (`Error`,
+   `Result`, `EnvOr`, `WriteFileAtomic`), every location the product
+   computes in `we::paths` (header-only, shared with the shim);
+3. ported upstream code keeps its upstream namespace (`KWin::Xcb`).
+
+The short `we` namespace is code-only spelling: on disk everything keeps
+the Names grammar above.

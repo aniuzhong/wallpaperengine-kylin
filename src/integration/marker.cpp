@@ -188,7 +188,7 @@ bool WriteTo(const std::string& path, int width, int height) {
     const std::string png = RenderPng(width, height);
     if (png.empty())
         return false;
-    return wallpaper_engine::WriteFileAtomic(path, png).has_value();
+    return we::WriteFileAtomic(path, png).has_value();
 }
 
 } // namespace marker

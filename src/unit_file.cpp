@@ -2,6 +2,7 @@
 
 #include "argvbuilder.h"
 #include "exec_args.h"
+#include "paths.h"
 #include "posix.h"
 
 #include <cstdlib>
@@ -14,15 +15,15 @@ namespace fs = std::filesystem;
 namespace unit_file {
 
 std::string Path(const std::string& unit) {
-    return wallpaper_engine::HomeDir() + "/.config/systemd/user/" + unit + ".service";
+    return we::paths::SystemdUserUnit(unit);
 }
 
-std::string Text(const Config& config, const std::string& xauthority) {
+std::string Text(const config::Config& config, const std::string& xauthority) {
     // systemd ExecStart quoting: EscapeExecArg quotes arguments containing
     // whitespace and doubles "$"/"%" so systemd's substitution does not eat
     // them; Backgrounds() inverts exactly this escaping
     std::string exec;
-    for (const std::string& arg : BuildArgv(config)) {
+    for (const std::string& arg : argvbuilder::BuildArgv(config)) {
         if (!exec.empty())
             exec += ' ';
         exec += systemd::EscapeExecArg(arg);
@@ -89,7 +90,7 @@ std::map<std::string, std::string> Backgrounds(const std::string& unit) {
     return result;
 }
 
-wallpaper_engine::Result<void> Install(const Config& config, const std::string& unit) {
+we::Result<void> Install(const config::Config& config, const std::string& unit) {
     const char* xauthority = getenv("XAUTHORITY");
     const std::string auth = (xauthority != nullptr && *xauthority != '\0') ? xauthority : "";
 
@@ -97,7 +98,7 @@ wallpaper_engine::Result<void> Install(const Config& config, const std::string& 
     std::error_code ec;
     fs::create_directories(fs::path(path).parent_path(), ec);
     // atomic like the config: systemd must never read a half-written unit
-    return wallpaper_engine::WriteFileAtomic(path, Text(config, auth));
+    return we::WriteFileAtomic(path, Text(config, auth));
 }
 
 } // namespace unit_file

@@ -17,6 +17,8 @@
 // deliberately does not read it today: it is tolerant of unknown keys and
 // wrongly-typed values, and when a version finally needs different
 // treatment, branching on the key is the migration hook.
+namespace config {
+
 struct Config {
     std::string enginePath;                                       // engine binary
     std::string assetsDir;                                        // --assets-dir
@@ -36,19 +38,17 @@ struct Config {
     bool disableParallax = false;                                 // --disable-parallax
     std::map<std::string, std::map<std::string, std::string>> properties; // wallpaper ID -> {property: value} (--set-property)
 
-    static std::string ConfigDir();  // ~/.config/wallpaper-engine
-    static std::string ConfigPath();
-
     // A missing file is not an error: the resolved defaults are the answer.
     // A file that exists but does not parse reports CorruptConfig — the
     // defaults still come back, but the caller can now tell the two apart
     // (and say so, instead of silently showing defaults). Load never fails,
     // so the slot is a diagnostics channel, not the Result convention.
-    static Config Load(wallpaper_engine::Error* problem = nullptr);
+    // The file itself lives at we::paths::ConfigFile().
+    static Config Load(we::Error* problem = nullptr);
 
     // Atomic replace (write-temp + rename): a concurrent reader sees the old
     // config or the new one, never a truncated file.
-    wallpaper_engine::Result<void> Save() const;
+    we::Result<void> Save() const;
 };
 
 // Pure: point |screen| at |wallpaperId| and return the updated config. An
@@ -62,3 +62,5 @@ Config AssignScreen(Config config, const std::string& screen, const std::string&
 // rule this replaces ("whichever entry the map happened to yield first")
 // followed std::map's ordering, not the desktop.
 std::string DefaultScreenFor(const Config& config, const std::string& primaryOutput);
+
+} // namespace config

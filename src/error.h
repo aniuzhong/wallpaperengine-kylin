@@ -13,7 +13,7 @@
 // value returns it plainly, and a diagnostics channel it carries stays
 // optional (the one exception is Config::Load, which always recovers to
 // defaults and reports the reason through a slot).
-namespace wallpaper_engine {
+namespace we {
 
 struct Error {
     enum Kind {
@@ -38,4 +38,4 @@ inline std::string Describe(const Error& error) {
     return error.message.empty() ? std::string("unknown error") : error.message;
 }
 
-} // namespace wallpaper_engine
+} // namespace we

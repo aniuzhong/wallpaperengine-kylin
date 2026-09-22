@@ -22,22 +22,22 @@ constexpr const char* kUnitIface = "org.freedesktop.systemd1.Unit";
 
 // Map a failed sd-bus call onto the typed error. D-Bus error names are
 // preserved for diagnostics; kind is what callers branch on.
-void TakeError(int rc, const sd_bus_error& err, wallpaper_engine::Error* error) {
+void TakeError(int rc, const sd_bus_error& err, we::Error* error) {
     if (error == nullptr)
         return;
     if (err.name != nullptr) {
         error->dbusName = err.name;
         error->message = err.message != nullptr ? err.message : "";
-        error->kind = std::strstr(err.name, "NoSuchUnit") != nullptr ? wallpaper_engine::Error::NoSuchUnit
-                                                                     : wallpaper_engine::Error::Unknown;
+        error->kind = std::strstr(err.name, "NoSuchUnit") != nullptr ? we::Error::NoSuchUnit
+                                                                     : we::Error::Unknown;
     } else {
-        error->kind = wallpaper_engine::Error::Unknown;
+        error->kind = we::Error::Unknown;
         error->message = std::strerror(-rc);
     }
 }
 
 // Fire one manager method (varargs-encoded arguments) on an open connection.
-bool CallManager(sd_bus* bus, const char* method, const char* types, wallpaper_engine::Error* error, ...) {
+bool CallManager(sd_bus* bus, const char* method, const char* types, we::Error* error, ...) {
     va_list ap;
     va_start(ap, error);
     sd_bus_message* m = nullptr;
@@ -63,7 +63,7 @@ bool CallManager(sd_bus* bus, const char* method, const char* types, wallpaper_e
 // Shared body of the lifecycle methods: one "ss" call with the canonical
 // unit id and replace mode.
 Result<void> UnitMethod(sd_bus* bus, const char* method, const std::string& unit) {
-    wallpaper_engine::Error error;
+    we::Error error;
     if (CallManager(bus, method, "ss", &error, CanonicalUnitName(unit).c_str(), "replace"))
         return {};
     return tl::unexpected(std::move(error));
@@ -138,8 +138,8 @@ Connection::~Connection() {
 Result<Connection> Connection::UserBus() {
     Connection connection;
     if (sd_bus_open_user(&connection.bus_) < 0 || connection.bus_ == nullptr) {
-        wallpaper_engine::Error error;
-        error.kind = wallpaper_engine::Error::BusUnreachable;
+        we::Error error;
+        error.kind = we::Error::BusUnreachable;
         error.message = "cannot connect to the user bus";
         return tl::unexpected(std::move(error));
     }
@@ -159,17 +159,17 @@ Result<void> Restart(Connection& connection, const std::string& unit) {
 }
 
 Result<void> ResetFailed(Connection& connection, const std::string& unit) {
-    wallpaper_engine::Error error;
+    we::Error error;
     CallManager(connection.handle(), "ResetFailedUnit", "s", &error, CanonicalUnitName(unit).c_str());
     if (Tolerated(error))
         error = {};
-    if (error.kind == wallpaper_engine::Error::NoError)
+    if (error.kind == we::Error::NoError)
         return {};
     return tl::unexpected(std::move(error));
 }
 
 Result<void> DaemonReload(Connection& connection) {
-    wallpaper_engine::Error error;
+    we::Error error;
     if (CallManager(connection.handle(), "Reload", "", &error))
         return {};
     return tl::unexpected(std::move(error));
@@ -218,8 +218,8 @@ int AppendExecStart(sd_bus_message* m, const ExecCommand& command) {
 
 Result<void> StartTransient(Connection& connection, const TransientSpec& spec) {
     if (spec.argv.empty()) {
-        wallpaper_engine::Error error;
-        error.kind = wallpaper_engine::Error::InvalidInput;
+        we::Error error;
+        error.kind = we::Error::InvalidInput;
         error.message = "empty argv";
         return tl::unexpected(std::move(error));
     }
@@ -270,7 +270,7 @@ Result<void> StartTransient(Connection& connection, const TransientSpec& spec) {
         rc = sd_bus_call(bus, m, 0, &err, &reply);
         sd_bus_message_unref(reply);
         if (rc < 0) {
-            wallpaper_engine::Error error;
+            we::Error error;
             TakeError(rc, err, &error);
             sd_bus_error_free(&err);
             sd_bus_message_unref(m);
@@ -278,8 +278,8 @@ Result<void> StartTransient(Connection& connection, const TransientSpec& spec) {
         }
         sd_bus_error_free(&err);
     } else {
-        wallpaper_engine::Error error;
-        error.kind = wallpaper_engine::Error::Unknown;
+        we::Error error;
+        error.kind = we::Error::Unknown;
         error.message = std::strerror(-rc);
         sd_bus_message_unref(m);
         return tl::unexpected(std::move(error));
@@ -303,7 +303,7 @@ Result<std::optional<UnitState>> ActiveState(Connection& connection, const std::
             sd_bus_error_free(&err);
             return std::nullopt;
         }
-        wallpaper_engine::Error error;
+        we::Error error;
         TakeError(rc, err, &error);
         sd_bus_error_free(&err);
         return tl::unexpected(std::move(error));
@@ -328,8 +328,8 @@ Result<void> WaitInactive(Connection& connection, const std::string& unit, std::
         if (left)
             return {};
         if (std::chrono::steady_clock::now() >= deadline) {
-            wallpaper_engine::Error error;
-            error.kind = wallpaper_engine::Error::Unknown;
+            we::Error error;
+            error.kind = we::Error::Unknown;
             error.message = "unit " + unit + " did not leave active state within " +
                             std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count()) +
                             " ms";
@@ -339,8 +339,8 @@ Result<void> WaitInactive(Connection& connection, const std::string& unit, std::
     }
 }
 
-bool Tolerated(const wallpaper_engine::Error& error) noexcept {
-    return error.kind == wallpaper_engine::Error::NoError || error.kind == wallpaper_engine::Error::NoSuchUnit ||
+bool Tolerated(const we::Error& error) noexcept {
+    return error.kind == we::Error::NoError || error.kind == we::Error::NoSuchUnit ||
            error.message.find("not loaded") != std::string::npos;
 }
 

@@ -105,7 +105,7 @@ bool SpawnDetached(const std::vector<std::string>& argv) {
         if (program.find('/') != std::string::npos)
             return ::access(program.c_str(), X_OK) == 0;
 
-        const std::string path = wallpaper_engine::EnvOr("PATH", "/usr/local/bin:/usr/bin:/bin");
+        const std::string path = we::EnvOr("PATH", "/usr/local/bin:/usr/bin:/bin");
         size_t start = 0;
         while (start <= path.size()) {
             const size_t end = path.find(':', start);

@@ -1,6 +1,7 @@
 #include "../integration.h"
 #include "marker.h"
 
+#include "../paths.h"
 #include "../peonybuilder.h"
 #include "../posix.h"
 #include "../process.h"
@@ -31,19 +32,6 @@ namespace {
 // wallpaper-engine-<host>).
 constexpr const char* kPeonyUnitId = "wallpaper-engine-peony";
 
-// The per-user data dir for this backend's consumables (marker wallpaper,
-// recorded previous background, shim log): the product's data dir, scoped
-// per backend as the Names section in the README prescribes.
-std::string dataDir() {
-    // GenericDataLocation: XDG_DATA_HOME or ~/.local/share
-    return wallpaper_engine::EnvOr("XDG_DATA_HOME", wallpaper_engine::HomeDir() + "/.local/share") +
-           "/wallpaper-engine/peony";
-}
-
-std::string markerPath() {
-    return dataDir() + "/marker.png";
-}
-
 // The size the marker is rendered at: the primary output's current mode,
 // so the drawn text comes out at native pixel density. Falls back to 1080p
 // when nothing answers (headless runs). The RandR walk rides on the
@@ -67,13 +55,10 @@ std::pair<int, int> markerSize()
     return {rect.width, rect.height};
 }
 
-// What the desktop's wallpaper was before setup pointed it at the marker.
-// Written by Setup(), read (and removed) by Teardown(); without it the only
-// remaining copy is inside the environment the injected peony was launched
-// with.
-std::string previousBackgroundPath() {
-    return dataDir() + "/previous-background";
-}
+// What the desktop's wallpaper was before setup pointed it at the marker
+// (we::paths::PeonyPreviousBackground): written by Setup(), read (and
+// removed) by Teardown(); without it the only remaining copy is inside the
+// environment the injected peony was launched with.
 
 // read a (small) file whole; /proc files report size 0, so drain with
 // reads instead of trusting the file size
@@ -263,23 +248,12 @@ void setAccountBackground(const std::string& marker) {
 
 namespace integration {
 
-// Locate libpeony-alpha.so: probe the frontend binary's own directory
-// (build tree, and layouts that ship the pair together), the library
-// directory a bin/ + lib/ install() layout produces, then the standard
-// system library paths. Returns an empty string when nothing matches.
+// Locate libpeony-alpha.so: first existing entry of the ordered candidate
+// list paths computes (the frontend binary's own directory, the lib/
+// directories a bin/ + lib/ install() layout produces, then the standard
+// system library paths). Returns an empty string when nothing matches.
 std::string LocateShim() {
-    const std::string name = "libpeony-alpha.so";
-    std::vector<std::string> candidates;
-    const std::string appDir = wallpaper_engine::ExeDir();
-    if (!appDir.empty()) {
-        candidates.push_back(appDir + "/" + name);          // build tree, sibling of the frontend
-        candidates.push_back(appDir + "/../lib/" + name);   // install() layout: bin/ + lib/
-        candidates.push_back(appDir + "/../lib64/" + name);
-    }
-    candidates.push_back("/usr/lib/" + name);
-    candidates.push_back("/usr/local/lib/" + name);
-    candidates.push_back("/usr/lib/x86_64-linux-gnu/" + name);
-    for (const std::string& candidate : candidates)
+    for (const std::string& candidate : we::paths::ShimCandidates())
         if (fs::exists(candidate))
             return candidate;
     return {};
@@ -297,20 +271,20 @@ Status Detect() {
     return status;
 }
 
-wallpaper_engine::Result<void> Setup() {
+we::Result<void> Setup() {
     // ---- 1. marker wallpaper; accountsservice and gsettings point at it.
     // The shim nullifies the pixmap at load time, so a working
     // integration never shows it (if the injection is ever lost, the
     // image on screen carries the recovery instructions).
     std::error_code fsEc;
-    fs::create_directories(dataDir(), fsEc);
-    fs::remove(dataDir() + "/peony-alpha.log", fsEc); // fresh log per setup
+    fs::create_directories(we::paths::PeonyDataDir(), fsEc);
+    fs::remove(we::paths::PeonyShimLog(), fsEc); // fresh log per setup
 
-    const std::string marker = markerPath();
+    const std::string marker = we::paths::PeonyMarker();
     const auto [markerWidth, markerHeight] = markerSize();
     if (!marker::WriteTo(marker, markerWidth, markerHeight)) {
-        wallpaper_engine::Error fail;
-        fail.kind = wallpaper_engine::Error::FileError;
+        we::Error fail;
+        fail.kind = we::Error::FileError;
         fail.message = "cannot write marker wallpaper to " + marker;
         return tl::unexpected(std::move(fail));
     }
@@ -328,11 +302,11 @@ wallpaper_engine::Result<void> Setup() {
     // wallpaper. The list that peony was launched with still starts with
     // the real one.
     std::error_code recordEc;
-    if (!fs::exists(previousBackgroundPath(), recordEc)) {
+    if (!fs::exists(we::paths::PeonyPreviousBackground(), recordEc)) {
         const std::string fromRunning = peony::FirstWallpaperIn(peonyEnvValue("PEONY_ALPHA_WALLPAPER"));
         if (!fromRunning.empty())
             previousBackground = fromRunning;
-        (void)wallpaper_engine::WriteFileAtomic(previousBackgroundPath(), previousBackground + "\n");
+        (void)we::WriteFileAtomic(we::paths::PeonyPreviousBackground(), previousBackground + "\n");
     }
 
     setAccountBackground(marker);
@@ -370,14 +344,14 @@ wallpaper_engine::Result<void> Setup() {
 
     const std::string shimPath = LocateShim();
     if (shimPath.empty()) {
-        wallpaper_engine::Error fail;
-        fail.kind = wallpaper_engine::Error::FileError;
+        we::Error fail;
+        fail.kind = we::Error::FileError;
         fail.message = "libpeony-alpha.so not found next to the frontend or in the standard "
                        "library paths (looked in " +
-                       wallpaper_engine::ExeDir() + ")";
+                       we::paths::ExeDir() + ")";
         return tl::unexpected(std::move(fail));
     }
-    const std::string logPath = dataDir() + "/peony-alpha.log";
+    const std::string logPath = we::paths::PeonyShimLog();
     const std::map<std::string, std::string> peonyEnv = peony::BuildShimEnvironment(shimPath, wallpaperList);
     systemd::TransientSpec spec;
     spec.unit = kPeonyUnitId;
@@ -398,19 +372,19 @@ wallpaper_engine::Result<void> Setup() {
         if (shimMapped(pid))
             return {};
     }
-    wallpaper_engine::Error fail;
-    fail.kind = wallpaper_engine::Error::Unknown;
+    we::Error fail;
+    fail.kind = we::Error::Unknown;
     fail.message = "peony relaunched but the shim did not map (list: " + wallpaperList +
                    "; log: " + logPath + ")";
     return tl::unexpected(std::move(fail));
 }
 
-wallpaper_engine::Result<void> Teardown() {
+we::Result<void> Teardown() {
     // ---- 1. which wallpaper to put back. The recorded copy is
     // authoritative; without it (an install from before it existed) the
     // list the running peony was launched with still names it first.
     std::string previous;
-    if (std::string contents; readSmallFile(previousBackgroundPath(), contents)) {
+    if (std::string contents; readSmallFile(we::paths::PeonyPreviousBackground(), contents)) {
         previous = contents;
         while (!previous.empty() && (previous.back() == '\n' || previous.back() == '\r'))
             previous.pop_back();
@@ -445,17 +419,17 @@ wallpaper_engine::Result<void> Teardown() {
     // leave nothing of ours behind: the record, the shim's log and the
     // marker are all consumables of an integration that no longer exists
     std::error_code removeEc;
-    fs::remove(previousBackgroundPath(), removeEc);
-    fs::remove(dataDir() + "/peony-alpha.log", removeEc);
-    fs::remove(markerPath(), removeEc);
+    fs::remove(we::paths::PeonyPreviousBackground(), removeEc);
+    fs::remove(we::paths::PeonyShimLog(), removeEc);
+    fs::remove(we::paths::PeonyMarker(), removeEc);
 
     // ---- 4. relaunch peony with nothing injected — an ordinary detached
     // process, so once this returns no unit of ours is supervising
     // anything
     if (injected || existingPid == 0) {
         if (!process::SpawnDetached({"/usr/bin/peony-qt-desktop", "-w", "-d"})) {
-            wallpaper_engine::Error fail;
-            fail.kind = wallpaper_engine::Error::FileError;
+            we::Error fail;
+            fail.kind = we::Error::FileError;
             fail.message = "cannot start /usr/bin/peony-qt-desktop; start it again from the "
                            "session menu to get the desktop icons back";
             return tl::unexpected(std::move(fail));
@@ -471,8 +445,8 @@ wallpaper_engine::Result<void> Teardown() {
         if (!shimMapped(pid))
             return {};
     }
-    wallpaper_engine::Error fail;
-    fail.kind = wallpaper_engine::Error::Unknown;
+    we::Error fail;
+    fail.kind = we::Error::Unknown;
     fail.message = "peony is running but the shim is still mapped into it";
     return tl::unexpected(std::move(fail));
 }

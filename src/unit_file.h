@@ -24,7 +24,7 @@ std::string Path(const std::string& unit);
 // shell's job, and this function stays total and testable. sddm/gdm keep
 // the cookie outside $HOME, which is why the path travels at all; an empty
 // |xauthority| falls back to %h/.Xauthority.
-std::string Text(const Config& config, const std::string& xauthority);
+std::string Text(const config::Config& config, const std::string& xauthority);
 
 // The inverse projection: screen -> wallpaper as the installed unit file
 // declares it (the truth even after manual unit edits). Empty when the
@@ -33,6 +33,6 @@ std::map<std::string, std::string> Backgrounds(const std::string& unit);
 
 // Atomic install: create the directory, then a sibling temp file + fsync +
 // rename — the manager must never read a half-written unit.
-wallpaper_engine::Result<void> Install(const Config& config, const std::string& unit);
+we::Result<void> Install(const config::Config& config, const std::string& unit);
 
 } // namespace unit_file

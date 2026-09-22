@@ -9,9 +9,9 @@
 // tl::expected is std::expected backported to C++17, which the toolchain
 // pins; swap the alias when that changes. Kept out of error.h so the error
 // type itself stays dependency-free.
-namespace wallpaper_engine {
+namespace we {
 
 template <typename T>
 using Result = tl::expected<T, Error>;
 
-} // namespace wallpaper_engine
+} // namespace we

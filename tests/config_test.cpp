@@ -1,7 +1,8 @@
-// T0 pure-logic tests: Config persistence (JSON roundtrip, isolation).
+// T0 pure-logic tests: config::Config persistence (JSON roundtrip, isolation).
 // XDG_CONFIG_HOME is pointed at a temp directory in initTestCase so these
 // tests never touch the real ~/.config.
 #include "../src/config.h"
+#include "../src/paths.h"
 
 #include <QTemporaryDir>
 #include <QtTest>
@@ -20,13 +21,13 @@ private slots:
     }
 
     void saveCreatesConfigFile() {
-        Config c;
+        config::Config c;
         QVERIFY(c.Save().has_value());
-        QVERIFY(std::filesystem::exists(Config::ConfigPath()));
+        QVERIFY(std::filesystem::exists(we::paths::ConfigFile()));
     }
 
     void roundtrip_preservesFields() {
-        Config written;
+        config::Config written;
         written.enginePath = "/opt/engine";
         written.display = ":1";
         written.fps = 60;
@@ -37,7 +38,7 @@ private slots:
         written.screens["DP-0"] = "123456";
         QVERIFY(written.Save().has_value());
 
-        const Config read = Config::Load();
+        const config::Config read = config::Config::Load();
         QCOMPARE(read.enginePath, written.enginePath);
         QCOMPARE(read.display, written.display);
         QCOMPARE(read.fps, 60);
@@ -50,9 +51,9 @@ private slots:
 
     void unknownJsonKeysAreIgnored() {
         // forward/backward compatibility: extra keys must not break loading
-        Config c;
+        config::Config c;
         c.Save();
-        QFile f(QString::fromStdString(Config::ConfigPath()));
+        QFile f(QString::fromStdString(we::paths::ConfigFile()));
         QVERIFY(f.open(QIODevice::ReadOnly));
         const QJsonObject obj = QJsonDocument::fromJson(f.readAll()).object();
         f.close();
@@ -62,48 +63,48 @@ private slots:
         f.write(QJsonDocument(extended).toJson());
         f.close();
 
-        const Config read = Config::Load();
+        const config::Config read = config::Config::Load();
         QCOMPARE(read.fps, c.fps);
     }
 
     void loadOnMissingFileGivesDefaults() {
-        Config c;
+        config::Config c;
         c.fps = 99;
         QVERIFY(c.Save().has_value());
-        std::filesystem::remove(Config::ConfigPath());
-        const Config fresh = Config::Load();
+        std::filesystem::remove(we::paths::ConfigFile());
+        const config::Config fresh = config::Config::Load();
         QCOMPARE(fresh.fps, 30);
         QVERIFY(fresh.silent);
     }
 
     void loadOnMissingFileIsNotAnError() {
         // the first-run case: defaults are the answer, not a failure
-        std::filesystem::remove(Config::ConfigPath());
-        wallpaper_engine::Error error;
-        Config::Load(&error);
-        QCOMPARE(error.kind, wallpaper_engine::Error::NoError);
+        std::filesystem::remove(we::paths::ConfigFile());
+        we::Error error;
+        config::Config::Load(&error);
+        QCOMPARE(error.kind, we::Error::NoError);
     }
 
     void loadOnCorruptFileReportsItButKeepsDefaults() {
-        Config c;
+        config::Config c;
         c.fps = 77;
         QVERIFY(c.Save().has_value());
-        QFile f(QString::fromStdString(Config::ConfigPath()));
+        QFile f(QString::fromStdString(we::paths::ConfigFile()));
         QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
         f.write("{ this is not json");
         f.close();
 
-        wallpaper_engine::Error error;
-        const Config read = Config::Load(&error);
-        QCOMPARE(error.kind, wallpaper_engine::Error::CorruptConfig);
+        we::Error error;
+        const config::Config read = config::Config::Load(&error);
+        QCOMPARE(error.kind, we::Error::CorruptConfig);
         QVERIFY(!error.message.empty());
         QCOMPARE(read.fps, 30); // defaults survive, but now they are explained
     }
 
     void saveIsAtomicAndLeavesNoTempFile() {
-        Config c;
+        config::Config c;
         QVERIFY(c.Save().has_value());
-        QVERIFY(!std::filesystem::exists(Config::ConfigPath() + ".tmp"));
+        QVERIFY(!std::filesystem::exists(we::paths::ConfigFile() + ".tmp"));
     }
 
     void failedSaveReportsFileError() {
@@ -117,12 +118,12 @@ private slots:
         blocker.close();
 
         qputenv("XDG_CONFIG_HOME", blocked + "/sub");
-        Config c;
+        config::Config c;
         const auto saved = c.Save();
         qputenv("XDG_CONFIG_HOME", m_configHome.toUtf8()); // restore before asserting
 
         QVERIFY(!saved.has_value());
-        QCOMPARE(saved.error().kind, wallpaper_engine::Error::FileError);
+        QCOMPARE(saved.error().kind, we::Error::FileError);
         QVERIFY(!saved.error().message.empty());
     }
 

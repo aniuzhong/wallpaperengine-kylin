@@ -1,14 +1,18 @@
 #include "config.h"
 
+#include "paths.h"
 #include "posix.h"
 
 #include <nlohmann/json.hpp>
 
 #include <filesystem>
 #include <fstream>
+#include <vector>
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
+
+namespace config {
 
 namespace {
 
@@ -17,18 +21,6 @@ std::string firstExisting(const std::vector<std::string>& candidates, const std:
         if (!candidate.empty() && fs::exists(candidate))
             return candidate;
     return fallback;
-}
-
-// Steam install layouts, matching linux-wallpaperengine's own auto-detection
-// list (native, ~/.steam symlink, flatpak, snap).
-std::vector<std::string> steamRoots() {
-    const std::string home = wallpaper_engine::HomeDir();
-    return {
-        home + "/.steam/steam",
-        home + "/.local/share/Steam",
-        home + "/.var/app/com.valvesoftware.Steam/.local/share/Steam",
-        home + "/snap/steam/common/.local/share/Steam",
-    };
 }
 
 // json extraction that keeps the fallback on a missing key OR a wrong type —
@@ -61,50 +53,29 @@ constexpr int kSchemaVersion = 1;
 
 } // namespace
 
-std::string Config::ConfigDir() {
-    return wallpaper_engine::EnvOr("XDG_CONFIG_HOME", wallpaper_engine::HomeDir() + "/.config") + "/wallpaper-engine";
-}
-
-std::string Config::ConfigPath() {
-    return ConfigDir() + "/config.json";
-}
-
-Config Config::Load(wallpaper_engine::Error* problem) {
+Config Config::Load(we::Error* problem) {
     Config config;
 
     // Resolve defaults from standard install locations; the config file
     // (and a .deb install) overrides them.
-    std::vector<std::string> engineCandidates {
-        "/opt/wallpaper-engine/linux-wallpaperengine", // deb payload layout
-        "/usr/local/bin/linux-wallpaperengine",
-        "/usr/bin/linux-wallpaperengine",
-    };
-    const std::string appDir = wallpaper_engine::ExeDir();
-    if (!appDir.empty()) {
-        engineCandidates.push_back(appDir + "/../linux-wallpaperengine"); // deb: bin/ sibling of the flat engine install
-        engineCandidates.push_back(appDir + "/linux-wallpaperengine");    // flat dev tree
-    }
-    config.enginePath = firstExisting(engineCandidates, "/opt/wallpaper-engine/linux-wallpaperengine");
+    const std::vector<std::string> engineCandidates = we::paths::EngineCandidates();
+    config.enginePath = firstExisting(engineCandidates, engineCandidates.front());
 
     // an empty result is intentional: argvbuilder then omits --assets-dir
     // and the engine runs its own auto-detection
-    std::vector<std::string> assetsCandidates;
-    std::vector<std::string> workshopCandidates;
-    for (const std::string& root : steamRoots()) {
-        assetsCandidates.push_back(root + "/steamapps/common/wallpaper_engine/assets");
-        workshopCandidates.push_back(root + "/steamapps/workshop/content/431960");
-    }
-    config.assetsDir = firstExisting(assetsCandidates, "");
-    config.workshopDir = firstExisting(workshopCandidates, workshopCandidates.front());
+    config.assetsDir = firstExisting(we::paths::SteamAssetsCandidates(), "");
+    config.workshopDir = firstExisting(we::paths::SteamWorkshopCandidates(),
+                                       we::paths::SteamWorkshopCandidates().front());
 
     std::error_code existsEc;
-    std::ifstream file(ConfigPath());
+    const std::string configPath = we::paths::ConfigFile();
+    std::ifstream file(configPath);
     if (!file.is_open()) {
         // a config that was never written is the normal first-run case; one
         // that exists and cannot be opened is a real failure
-        if (problem != nullptr && fs::exists(ConfigPath(), existsEc)) {
-            problem->kind = wallpaper_engine::Error::FileError;
-            problem->message = "cannot read " + ConfigPath();
+        if (problem != nullptr && fs::exists(configPath, existsEc)) {
+            problem->kind = we::Error::FileError;
+            problem->message = "cannot read " + configPath;
         }
         return config;
     }
@@ -116,15 +87,15 @@ Config Config::Load(wallpaper_engine::Error* problem) {
         // corrupt file: the freshly resolved defaults survive, but the
         // caller now learns why it is looking at defaults
         if (problem != nullptr) {
-            problem->kind = wallpaper_engine::Error::CorruptConfig;
-            problem->message = ConfigPath() + ": " + parseError.what();
+            problem->kind = we::Error::CorruptConfig;
+            problem->message = configPath + ": " + parseError.what();
         }
         return config;
     }
     if (!obj.is_object()) {
         if (problem != nullptr) {
-            problem->kind = wallpaper_engine::Error::CorruptConfig;
-            problem->message = ConfigPath() + ": not a JSON object";
+            problem->kind = we::Error::CorruptConfig;
+            problem->message = configPath + ": not a JSON object";
         }
         return config;
     }
@@ -159,9 +130,9 @@ Config Config::Load(wallpaper_engine::Error* problem) {
     return config;
 }
 
-wallpaper_engine::Result<void> Config::Save() const {
+we::Result<void> Config::Save() const {
     std::error_code ec;
-    fs::create_directories(ConfigDir(), ec);
+    fs::create_directories(we::paths::ProductConfigDir(), ec);
 
     json obj;
     obj["schemaVersion"] = kSchemaVersion;
@@ -193,7 +164,7 @@ wallpaper_engine::Result<void> Config::Save() const {
 
     // indented, matching QJsonDocument::Indented; replaced atomically so a
     // concurrent reader (or a crash) never sees a half-written config
-    return wallpaper_engine::WriteFileAtomic(ConfigPath(), obj.dump(2) + "\n");
+    return we::WriteFileAtomic(we::paths::ConfigFile(), obj.dump(2) + "\n");
 }
 
 
@@ -213,3 +184,5 @@ std::string DefaultScreenFor(const Config& config, const std::string& primaryOut
         return config.screens.begin()->first; // the only candidate there is
     return primaryOutput; // fresh config, or a multi-screen one without the primary
 }
+
+} // namespace config

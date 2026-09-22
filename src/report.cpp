@@ -22,21 +22,21 @@ bool isVideoPreview(const std::string& path) {
 
 // Wire name for an error kind. Callers branch on these strings, so they are
 // part of the contract: rename one and you rename it for consumers too.
-const char* kindName(wallpaper_engine::Error::Kind kind) {
+const char* kindName(we::Error::Kind kind) {
     switch (kind) {
-    case wallpaper_engine::Error::NoError:
+    case we::Error::NoError:
         return "ok";
-    case wallpaper_engine::Error::BusUnreachable:
+    case we::Error::BusUnreachable:
         return "bus-unreachable";
-    case wallpaper_engine::Error::NoSuchUnit:
+    case we::Error::NoSuchUnit:
         return "no-such-unit";
-    case wallpaper_engine::Error::InvalidInput:
+    case we::Error::InvalidInput:
         return "invalid-input";
-    case wallpaper_engine::Error::FileError:
+    case we::Error::FileError:
         return "file-error";
-    case wallpaper_engine::Error::CorruptConfig:
+    case we::Error::CorruptConfig:
         return "corrupt-config";
-    case wallpaper_engine::Error::Unknown:
+    case we::Error::Unknown:
         break;
     }
     return "unknown";
@@ -61,9 +61,9 @@ nlohmann::json Status(const std::string& unitName, const std::string& state,
     return root;
 }
 
-nlohmann::json Library(const std::vector<WallpaperEntry>& entries) {
+nlohmann::json Library(const std::vector<library::WallpaperEntry>& entries) {
     nlohmann::json arr = nlohmann::json::array();
-    for (const WallpaperEntry& entry : entries) {
+    for (const library::WallpaperEntry& entry : entries) {
         nlohmann::json o;
         o["id"] = entry.id;
         o["title"] = entry.title;
@@ -81,7 +81,7 @@ nlohmann::json Library(const std::vector<WallpaperEntry>& entries) {
     return nlohmann::json::array({ std::move(arr) });
 }
 
-nlohmann::json Error(const wallpaper_engine::Error& error) {
+nlohmann::json Error(const we::Error& error) {
     nlohmann::json detail;
     detail["kind"] = kindName(error.kind);
     detail["message"] = error.message.empty() ? Describe(error) : error.message;

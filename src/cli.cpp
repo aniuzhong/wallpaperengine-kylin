@@ -2,6 +2,7 @@
 
 #include "argvbuilder.h"
 #include "config.h"
+#include "paths.h"
 #include "engine_unit.h"
 #include "integration.h"
 #include "library.h"
@@ -23,6 +24,8 @@
 #include <filesystem>
 
 namespace fs = std::filesystem;
+
+namespace cli {
 
 namespace {
 
@@ -56,22 +59,22 @@ void PrintUsage() {
 // The one failure exit: --json consumers get the structured projection,
 // humans get "<what>: <why>". Every command funnels through here so a
 // reason is never dropped on the floor.
-int Fail(bool json, const std::string& what, const wallpaper_engine::Error& error) {
+int Fail(bool json, const std::string& what, const we::Error& error) {
     if (json)
         std::printf("%s\n", report::Error(error).dump().c_str());
     else
-        std::printf("%s: %s\n", what.c_str(), wallpaper_engine::Describe(error).c_str());
+        std::printf("%s: %s\n", what.c_str(), we::Describe(error).c_str());
     return EXIT_FAIL;
 }
 
 // The Result shape of the same exit: success passes straight through as
 // EXIT_OK, a failure funnels into the projection above.
-int Fail(bool json, const std::string& what, wallpaper_engine::Result<void>&& result) {
+int Fail(bool json, const std::string& what, we::Result<void>&& result) {
     return result ? EXIT_OK : Fail(json, what, std::move(result).error());
 }
 
 int CmdStatus(bool json) {
-    const Config config = Config::Load();
+    const config::Config config = config::Config::Load();
     auto state = engine_unit::State();
     const std::string stateName = state ? *state : "unknown";
     // the unit file is what systemd actually runs; config.json is the
@@ -94,18 +97,18 @@ int CmdStatus(bool json) {
         std::printf("screen %s: %s\n", screen.c_str(), wallpaper.c_str());
     std::printf("engine: %s\n", config.enginePath.c_str());
     if (!state)
-        std::printf("bus: %s\n", wallpaper_engine::Describe(state.error()).c_str());
+        std::printf("bus: %s\n", we::Describe(state.error()).c_str());
     return EXIT_OK;
 }
 
 int CmdList(bool json) {
-    const Config config = Config::Load();
-    const std::vector<WallpaperEntry> entries = ScanLibrary(config.workshopDir);
+    const config::Config config = config::Config::Load();
+    const std::vector<library::WallpaperEntry> entries = library::ScanLibrary(config.workshopDir);
     if (json) {
         std::printf("%s\n", report::Library(entries).dump().c_str());
         return EXIT_OK;
     }
-    for (const WallpaperEntry& e : entries)
+    for (const library::WallpaperEntry& e : entries)
         std::printf("%s  [%s]  %s\n", e.id.c_str(), e.type.c_str(), e.title.c_str());
     return EXIT_OK;
 }
@@ -128,8 +131,8 @@ int CmdSwitch(const std::vector<std::string>& args, bool json) {
             id = a;
     }
 
-    const Config config = Config::Load();
-    const std::vector<WallpaperEntry> library = ScanLibrary(config.workshopDir);
+    const config::Config config = config::Config::Load();
+    const std::vector<library::WallpaperEntry> library = library::ScanLibrary(config.workshopDir);
     if (library.empty()) {
         std::printf("switch: no wallpapers found in %s\n", config.workshopDir.c_str());
         return EXIT_FAIL;
@@ -141,7 +144,7 @@ int CmdSwitch(const std::vector<std::string>& args, bool json) {
     }
 
     bool known = false;
-    for (const WallpaperEntry& e : library)
+    for (const library::WallpaperEntry& e : library)
         known |= (e.id == id);
     if (!known) {
         std::printf("switch: unknown wallpaper id %s\n", id.c_str());
@@ -153,14 +156,14 @@ int CmdSwitch(const std::vector<std::string>& args, bool json) {
     // only necessary when the caller did not name a screen.
     const std::string screen =
         requestedScreen.empty()
-            ? DefaultScreenFor(config, engine_unit::FallbackScreenName())
+            ? config::DefaultScreenFor(config, engine_unit::FallbackScreenName())
             : requestedScreen;
     if (screen.empty()) {
         std::printf("switch: no screen to target — pass --screen <name>\n");
         return EXIT_FAIL;
     }
 
-    const Config updated = AssignScreen(config, screen, id);
+    const config::Config updated = config::AssignScreen(config, screen, id);
     if (auto applied = engine_unit::ApplyConfig(updated); !applied)
         return Fail(json, "switch", std::move(applied).error());
 
@@ -169,7 +172,7 @@ int CmdSwitch(const std::vector<std::string>& args, bool json) {
 }
 
 int CmdProperties(const std::string& id) {
-    const Config config = Config::Load();
+    const config::Config config = config::Config::Load();
     std::string output;
     bool timedOut = false;
     const int exitCode = process::RunCaptured(
@@ -181,8 +184,8 @@ int CmdProperties(const std::string& id) {
         std::fwrite(output.data(), 1, output.size(), stdout);
 
     if (process::DidNotRun(exitCode)) {
-        wallpaper_engine::Error error;
-        error.kind = wallpaper_engine::Error::Unknown;
+        we::Error error;
+        error.kind = we::Error::Unknown;
         error.message = timedOut ? "the engine did not finish in time"
                                  : "the engine at " + config.enginePath + " could not be run";
         return Fail(false, "properties", error);
@@ -206,21 +209,21 @@ int CmdRemoveIntegration(bool json) {
 }
 
 int CmdDoctor() {
-    wallpaper_engine::Error configError;
-    const Config config = Config::Load(&configError);
+    we::Error configError;
+    const config::Config config = config::Config::Load(&configError);
     std::error_code ec;
-    const std::string configPath = Config::ConfigPath();
+    const std::string configPath = we::paths::ConfigFile();
     std::printf("config: %s (%s)\n", configPath.c_str(),
                  fs::exists(configPath, ec) ? "present" : "missing");
     // "present" and "readable" are different answers: say which one it is
-    if (configError.kind != wallpaper_engine::Error::NoError)
-        std::printf("config problem: %s\n", wallpaper_engine::Describe(configError).c_str());
+    if (configError.kind != we::Error::NoError)
+        std::printf("config problem: %s\n", we::Describe(configError).c_str());
     std::printf("engine binary: %s (%s)\n", config.enginePath.c_str(),
                  fs::exists(config.enginePath, ec) ? "present" : "MISSING");
     std::printf("assets dir: %s (%s)\n", config.assetsDir.c_str(),
                  fs::is_directory(config.assetsDir, ec) ? "present" : "MISSING");
     std::printf("workshop dir: %s (%d wallpapers)\n", config.workshopDir.c_str(),
-                 static_cast<int> (ScanLibrary(config.workshopDir).size()));
+                 static_cast<int> (library::ScanLibrary(config.workshopDir).size()));
 
     // three states, compared: what the config wants (desired), what the
     // installed unit file declares, and what the manager runs (the state
@@ -264,8 +267,8 @@ int CmdDoctor() {
 
 int CmdSelftest() {
     // load the config (creating defaults on first run) and report
-    const Config config = Config::Load();
-    std::printf("config path: %s\n", Config::ConfigPath().c_str());
+    const config::Config config = config::Config::Load();
+    std::printf("config path: %s\n", we::paths::ConfigFile().c_str());
     std::printf("engine: %s\n", config.enginePath.c_str());
     std::printf("screens: %d, fps: %d, silent: %s\n", static_cast<int> (config.screens.size()), config.fps,
                  config.silent ? "true" : "false");
@@ -287,7 +290,7 @@ int RunCli(const std::vector<std::string>& args) {
     const bool json = std::find(rest.begin(), rest.end(), "--json") != rest.end();
 
     if (command == "start" || command == "resume") {
-        if (auto installed = engine_unit::WriteUnitFile(Config::Load()); !installed)
+        if (auto installed = engine_unit::WriteUnitFile(config::Config::Load()); !installed)
             return Fail(json, command, std::move(installed).error());
         if (auto reloaded = engine_unit::DaemonReload(); !reloaded)
             return Fail(json, command, std::move(reloaded).error());
@@ -318,3 +321,5 @@ int RunCli(const std::vector<std::string>& args) {
     PrintUsage();
     return EXIT_USAGE;
 }
+
+} // namespace cli

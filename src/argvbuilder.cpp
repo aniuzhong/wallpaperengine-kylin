@@ -2,7 +2,9 @@
 
 #include <algorithm>
 
-std::vector<std::string> BuildArgv(const Config& config) {
+namespace argvbuilder {
+
+std::vector<std::string> BuildArgv(const config::Config& config) {
     std::vector<std::string> argv { config.enginePath };
 
     if (!config.assetsDir.empty()) {
@@ -67,3 +69,5 @@ std::vector<std::string> BuildArgv(const Config& config) {
 
     return argv;
 }
+
+} // namespace argvbuilder

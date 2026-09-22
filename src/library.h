@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+namespace library {
+
 struct WallpaperEntry {
     std::string id;        // workshop directory name, used as --bg value
     std::string title;     // project.json title
@@ -25,3 +27,5 @@ struct WallpaperEntry {
 // other presentation work belongs to the CLI: it gets paths and
 // numbers, never images.
 std::vector<WallpaperEntry> ScanLibrary(const std::string& workshopDir);
+
+} // namespace library

@@ -28,7 +28,7 @@ class LibraryTest : public QObject {
 
 private slots:
     void init() {
-        // a fresh workshop root per test: ScanLibrary must only see what the
+        // a fresh workshop root per test: library::ScanLibrary must only see what the
         // running test created
         m_workshop = std::make_unique<QTemporaryDir> ();
         QVERIFY(m_workshop->isValid());
@@ -43,7 +43,7 @@ private slots:
         put(dir + "/nested.bin", std::string(512, 'y')); // size walks subdirectories too
         const uint64_t expectedSize = json.size() + 4096 + 512;
 
-        const std::vector<WallpaperEntry> entries = ScanLibrary(m_workshop->path().toStdString());
+        const std::vector<library::WallpaperEntry> entries = library::ScanLibrary(m_workshop->path().toStdString());
         QCOMPARE(entries.size(), size_t(1));
         QCOMPARE(entries.front().id, std::string("entry-a"));
         QCOMPARE(entries.front().title, std::string("Beta Wall"));
@@ -58,7 +58,7 @@ private slots:
         put(dir + "/project.json", R"({"title": "Jpg Fallback"})");
         put(dir + "/preview.jpg", std::string(16, 'p'));
 
-        const std::vector<WallpaperEntry> entries = ScanLibrary(m_workshop->path().toStdString());
+        const std::vector<library::WallpaperEntry> entries = library::ScanLibrary(m_workshop->path().toStdString());
         QCOMPARE(entries.size(), size_t(1));
         QCOMPARE(entries.front().previewPath, dir + "/preview.jpg");
     }
@@ -68,7 +68,7 @@ private slots:
         QVERIFY(fs::create_directories(dir));
         put(dir + "/project.json", R"({"title": "No Preview", "preview": "missing.png"})");
 
-        const std::vector<WallpaperEntry> entries = ScanLibrary(m_workshop->path().toStdString());
+        const std::vector<library::WallpaperEntry> entries = library::ScanLibrary(m_workshop->path().toStdString());
         QCOMPARE(entries.size(), size_t(1));
         QVERIFY(entries.front().previewPath.empty());
     }
@@ -80,7 +80,7 @@ private slots:
         QVERIFY(fs::create_directories(withProject));
         put(withProject + "/project.json", R"({"title": "Real"})");
 
-        const std::vector<WallpaperEntry> entries = ScanLibrary(m_workshop->path().toStdString());
+        const std::vector<library::WallpaperEntry> entries = library::ScanLibrary(m_workshop->path().toStdString());
         QCOMPARE(entries.size(), size_t(1));
         QCOMPARE(entries.front().id, std::string("real-entry"));
     }
@@ -90,7 +90,7 @@ private slots:
         QVERIFY(fs::create_directories(dir));
         put(dir + "/project.json", "{}");
 
-        const std::vector<WallpaperEntry> entries = ScanLibrary(m_workshop->path().toStdString());
+        const std::vector<library::WallpaperEntry> entries = library::ScanLibrary(m_workshop->path().toStdString());
         QCOMPARE(entries.size(), size_t(1));
         QCOMPARE(entries.front().title, std::string("bare"));
         QCOMPARE(entries.front().type, std::string("unknown"));
@@ -108,14 +108,14 @@ private slots:
             put(dir + "/project.json", std::string(R"({"title": ")") + c.title + "\"}");
         }
 
-        const std::vector<WallpaperEntry> entries = ScanLibrary(m_workshop->path().toStdString());
+        const std::vector<library::WallpaperEntry> entries = library::ScanLibrary(m_workshop->path().toStdString());
         QCOMPARE(entries.size(), size_t(2));
         QCOMPARE(entries.at(0).title, std::string("apple"));
         QCOMPARE(entries.at(1).title, std::string("Zebra"));
     }
 
     void scan_missingRootYieldsEmpty() {
-        QVERIFY(ScanLibrary((m_workshop->path() + "/does-not-exist").toStdString()).empty());
+        QVERIFY(library::ScanLibrary((m_workshop->path() + "/does-not-exist").toStdString()).empty());
     }
 
     void scan_rejectsPreviewEscapingTheWallpaperDir() {
@@ -125,7 +125,7 @@ private slots:
         QVERIFY(fs::create_directories(dir));
         put(dir + "/project.json", R"({"title": "Escape", "preview": "../../../../etc/passwd"})");
 
-        const std::vector<WallpaperEntry> entries = ScanLibrary(m_workshop->path().toStdString());
+        const std::vector<library::WallpaperEntry> entries = library::ScanLibrary(m_workshop->path().toStdString());
         QCOMPARE(entries.size(), size_t(1));
         QVERIFY(entries.front().previewPath.empty());
     }
@@ -142,7 +142,7 @@ private slots:
         fs::create_symlink(outside, dir + "/cover.png", ec);
         QVERIFY(!ec);
 
-        const std::vector<WallpaperEntry> entries = ScanLibrary(m_workshop->path().toStdString());
+        const std::vector<library::WallpaperEntry> entries = library::ScanLibrary(m_workshop->path().toStdString());
         QCOMPARE(entries.size(), size_t(1));
         QVERIFY(entries.front().previewPath.empty());
     }

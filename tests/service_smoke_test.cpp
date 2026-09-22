@@ -26,22 +26,22 @@ int main() {
     }
 
     // config -> argv mapping off the defaults (empty screens: no screen flags)
-    const Config config;
-    const std::vector<std::string> argv = BuildArgv(config);
+    const config::Config config;
+    const std::vector<std::string> argv = argvbuilder::BuildArgv(config);
     if (argv.empty() || argv.front() != config.enginePath) {
-        std::printf("smoke: BuildArgv failed\n");
+        std::printf("smoke: argvbuilder::BuildArgv failed\n");
         return 1;
     }
 
     // library scan on a nonexistent root degrades to an empty result
-    if (!ScanLibrary("/wallpaper-engine-smoke-does-not-exist").empty()) {
-        std::printf("smoke: ScanLibrary failed\n");
+    if (!library::ScanLibrary("/wallpaper-engine-smoke-does-not-exist").empty()) {
+        std::printf("smoke: library::ScanLibrary failed\n");
         return 1;
     }
 
     // CLI usage path: exercises the command table with no side effects
-    if (RunCli({}) != 2) {
-        std::printf("smoke: RunCli usage exit failed\n");
+    if (cli::RunCli({}) != 2) {
+        std::printf("smoke: cli::RunCli usage exit failed\n");
         return 1;
     }
 

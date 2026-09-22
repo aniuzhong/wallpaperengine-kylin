@@ -48,7 +48,7 @@ private slots:
     }
 
     void libraryKeepsTheWrappedShape() {
-        WallpaperEntry entry;
+        library::WallpaperEntry entry;
         entry.id = "843532366";
         entry.title = "星尘";
         entry.type = "scene";
@@ -70,8 +70,8 @@ private slots:
     }
 
     void errorNamesTheKindAndKeepsTheDbusName() {
-        wallpaper_engine::Error error;
-        error.kind = wallpaper_engine::Error::NoSuchUnit;
+        we::Error error;
+        error.kind = we::Error::NoSuchUnit;
         error.message = "Unit not loaded";
         error.dbusName = "org.freedesktop.systemd1.NoSuchUnit";
 
@@ -82,8 +82,8 @@ private slots:
     }
 
     void errorOmitsTheDbusNameWhenThereWasNone() {
-        wallpaper_engine::Error error;
-        error.kind = wallpaper_engine::Error::FileError;
+        we::Error error;
+        error.kind = we::Error::FileError;
         error.message = "cannot write /tmp/x";
 
         const QJsonObject detail = parseObject(report::Error(error)).value("error").toObject();
@@ -92,8 +92,8 @@ private slots:
     }
 
     void errorWithNoMessageStillSaysSomething() {
-        wallpaper_engine::Error error;
-        error.kind = wallpaper_engine::Error::Unknown;
+        we::Error error;
+        error.kind = we::Error::Unknown;
 
         const QJsonObject detail = parseObject(report::Error(error)).value("error").toObject();
         QCOMPARE(detail.value("kind").toString(), QString("unknown"));

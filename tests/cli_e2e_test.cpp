@@ -4,6 +4,7 @@
 // lifecycle assertions are hermetic: they need a session bus and nothing
 // else. The user's own config file is backed up wholesale and restored.
 #include "../src/config.h"
+#include "../src/paths.h"
 #include "../src/engine_unit.h"
 
 #include <QDBusConnection>
@@ -63,7 +64,7 @@ private slots:
 
         // back up the user's config wholesale; cleanupTestCase puts the
         // exact bytes back (or removes the file when there was none)
-        const QString configPath = QString::fromStdString(Config::ConfigPath());
+        const QString configPath = QString::fromStdString(we::paths::ConfigFile());
         QFile configFile(configPath);
         m_configExisted = configFile.exists();
         if (m_configExisted && configFile.open(QIODevice::ReadOnly))
@@ -99,7 +100,7 @@ private slots:
             project.write("{\"title\": \"e2e stub\", \"type\": \"scene\"}\n");
         }
 
-        Config config = Config::Load();
+        config::Config config = config::Config::Load();
         config.enginePath = stub.toStdString();
         config.workshopDir = workshop;
         config.screens.clear();
@@ -125,7 +126,7 @@ private slots:
         QTRY_COMPARE(UnitState(kTestUnit), QString("active"));
 
         // config.json persisted the switch
-        const Config afterSwitch = Config::Load();
+        const config::Config afterSwitch = config::Config::Load();
         const auto selected = afterSwitch.screens.find(m_screen.toStdString());
         QVERIFY(selected != afterSwitch.screens.end());
         QCOMPARE(QString::fromStdString(selected->second), QString(kTestWallpaper));
@@ -159,7 +160,7 @@ private slots:
 
     void cleanupTestCase() {
         // put the user's config back exactly as it was
-        const QString configPath = QString::fromStdString(Config::ConfigPath());
+        const QString configPath = QString::fromStdString(we::paths::ConfigFile());
         if (!m_configExisted) {
             QFile::remove(configPath);
             return;

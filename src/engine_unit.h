@@ -25,21 +25,21 @@ std::string UnitPath();  // ~/.config/systemd/user/<unit>.service
 std::map<std::string, std::string> UnitBackgrounds();
 
 // Project the desired state into the unit file and install it atomically.
-wallpaper_engine::Result<void> WriteUnitFile(const Config& config);
+we::Result<void> WriteUnitFile(const config::Config& config);
 
-wallpaper_engine::Result<void> DaemonReload();
-wallpaper_engine::Result<void> StartUnit();
-wallpaper_engine::Result<void> RestartUnit();
+we::Result<void> DaemonReload();
+we::Result<void> StartUnit();
+we::Result<void> RestartUnit();
 
 // Idempotent: stopping a unit that was never loaded already has the
 // desired end state and reports success.
-wallpaper_engine::Result<void> StopUnit();
+we::Result<void> StopUnit();
 
 // The unit's ActiveState as the wire spells it ("active"/"inactive"/...).
 // A unit that is not loaded presents as "inactive" — the status contract
 // predates the distinction; systemd::ActiveState is the honest view for
 // callers that want it. Fails with Unknown when the bus does not answer.
-wallpaper_engine::Result<std::string> State();
+we::Result<std::string> State();
 
 // The primary X output as RandR reports it (the engine renders on X11);
 // "DP-0" when no usable X server answers. Impure — it opens a display
@@ -54,6 +54,6 @@ std::vector<std::string> ScreenNames();
 // The one apply chain: persist the desired state, project it into the unit
 // file the manager runs, reload, restart. The first failing step is the
 // error the caller sees, and one bus connection spans reload + restart.
-wallpaper_engine::Result<void> ApplyConfig(const Config& config);
+we::Result<void> ApplyConfig(const config::Config& config);
 
 } // namespace engine_unit

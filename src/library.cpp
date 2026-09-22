@@ -10,6 +10,8 @@
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 
+namespace library {
+
 namespace {
 
 uint64_t directorySize(const std::string& path) {
@@ -107,3 +109,5 @@ std::vector<WallpaperEntry> ScanLibrary(const std::string& workshopDir) {
     std::sort(entries.begin(), entries.end(), titleLess);
     return entries;
 }
+
+} // namespace library

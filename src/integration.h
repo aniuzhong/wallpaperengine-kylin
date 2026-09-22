@@ -50,7 +50,7 @@ std::string LocateShim();
 //   4. verify: process alive, shim mapped
 // A D-Bus failure keeps its kind and error name, a missing shim or marker
 // file reports FileError, a launch that did not take reports Unknown.
-wallpaper_engine::Result<void> Setup();
+we::Result<void> Setup();
 
 // The exact inverse, and the only supported way out of the injection:
 //   1. work out which wallpaper the desktop had before setup — from the copy
@@ -65,6 +65,6 @@ wallpaper_engine::Result<void> Setup();
 //   5. verify: alive, shim gone
 // A shell that is already running without the shim is left alone; only the
 // wallpaper pointer is put back.
-wallpaper_engine::Result<void> Teardown();
+we::Result<void> Teardown();
 
 } // namespace integration

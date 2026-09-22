@@ -26,11 +26,11 @@ nlohmann::json Status(const std::string& UnitName, const std::string& state,
 // The entries wrapped in one array — the shape `list --json` has always
 // published. Consumers index [0] for the entries; kept as-is so existing
 // scripts keep working.
-nlohmann::json Library(const std::vector<WallpaperEntry>& entries);
+nlohmann::json Library(const std::vector<library::WallpaperEntry>& entries);
 
 // {"error": {kind, message, dbusName?}} — the failure counterpart, so a
 // --json consumer never has to parse prose. dbusName is present only when
 // the failure came from the bus.
-nlohmann::json Error(const wallpaper_engine::Error& error);
+nlohmann::json Error(const we::Error& error);
 
 } // namespace report

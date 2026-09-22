@@ -55,6 +55,8 @@
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 
+#include "../paths.h"
+
 #include <fmt/format.h>
 
 #include <cerrno>
@@ -97,24 +99,15 @@
 
 namespace {
 
-// The one log destination: the peony backend's data dir, the same shape
-// integration/peony.cpp computes (README "Names" — the file belongs to the
-// <host>-<effect> pair). Environment only, no filesystem work: when the
-// directory does not exist (a shim mapped outside a setup pass) open()
-// fails and logging stays off rather than the shim growing
-// directory-management behavior.
+// The one log destination: we::paths::PeonyShimLog() — literally the same
+// function the service layer calls (README "Names" — the file belongs to
+// the <host>-<effect> pair), so the two sides cannot drift. Header-only,
+// so sharing it costs the shim no link dependency. Environment only, no
+// filesystem work: when the directory does not exist (a shim mapped
+// outside a setup pass) open() fails and logging stays off rather than the
+// shim growing directory-management behavior.
 std::string log_path() {
-    const char* data_home = getenv("XDG_DATA_HOME");
-    std::string base;
-    if (data_home != nullptr && *data_home != '\0') {
-        base = data_home;
-    } else {
-        const char* home = getenv("HOME");
-        if (home == nullptr || *home == '\0')
-            return {};
-        base = std::string(home) + "/.local/share";
-    }
-    return base + "/wallpaper-engine/peony/peony-alpha.log";
+    return we::paths::PeonyShimLog();
 }
 
 int log_fd() {

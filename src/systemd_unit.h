@@ -26,7 +26,7 @@ namespace systemd {
 
 // Module-local spelling of the project-wide Result (src/error.h).
 template <typename T>
-using Result = wallpaper_engine::Result<T>;
+using Result = we::Result<T>;
 
 // ActiveState per systemd. The wire names parse at the boundary once
 // (UnitStateFromName); callers compare enumerators, and anything new or
@@ -119,6 +119,6 @@ Result<void> WaitInactive(Connection& connection, const std::string& unit,
 // True when |error| is an acceptable outcome of an idempotent control
 // operation: success, a unit that does not exist, or systemd's "not loaded"
 // phrasing for the same thing.
-bool Tolerated(const wallpaper_engine::Error& error) noexcept;
+bool Tolerated(const we::Error& error) noexcept;
 
 } // namespace systemd
