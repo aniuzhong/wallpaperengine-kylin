@@ -1,6 +1,7 @@
 #pragma once
 
 #include "error.h"
+#include "result.h"
 
 #include <cstdint>
 #include <string>
@@ -47,10 +48,9 @@ std::string LocateShim();
 //      the shim environment (Restart=on-failure keeps it injected across
 //      crashes)
 //   4. verify: process alive, shim mapped
-// Returns false with the failing step described in |error|: a D-Bus failure
-// keeps its kind and error name, a missing shim or marker file reports
-// FileError, a launch that did not take reports Unknown.
-bool Setup(wallpaper_engine::Error* error = nullptr);
+// A D-Bus failure keeps its kind and error name, a missing shim or marker
+// file reports FileError, a launch that did not take reports Unknown.
+wallpaper_engine::Result<void> Setup();
 
 // The exact inverse, and the only supported way out of the injection:
 //   1. work out which wallpaper the desktop had before setup — from the copy
@@ -65,6 +65,6 @@ bool Setup(wallpaper_engine::Error* error = nullptr);
 //   5. verify: alive, shim gone
 // A shell that is already running without the shim is left alone; only the
 // wallpaper pointer is put back.
-bool Teardown(wallpaper_engine::Error* error = nullptr);
+wallpaper_engine::Result<void> Teardown();
 
 } // namespace integration

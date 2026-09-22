@@ -53,7 +53,9 @@ add_library(wallpaper_service STATIC
     src/integration/marker.cpp
     src/integration/peony.cpp
     src/engine_unit.cpp
-    src/engineprocess.cpp
+    src/process.cpp
+    src/display.cpp
+    src/unit_file.cpp
 )
 target_include_directories(wallpaper_service PUBLIC src ${XCB_RANDR_INCLUDE_DIRS})
 target_link_libraries(wallpaper_service PUBLIC nlohmann_json::nlohmann_json tl::expected ${XCB_LIBRARIES} ${XCB_RANDR_LIBRARIES} ${LIBSYSTEMD_LIBRARIES})

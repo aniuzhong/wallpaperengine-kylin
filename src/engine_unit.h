@@ -2,56 +2,58 @@
 
 #include "config.h"
 #include "error.h"
+#include "result.h"
 
 #include <map>
 #include <string>
 #include <vector>
 
-// Thin control surface over the systemd user manager, backed by the sd-bus
-// client in systemd_unit.cpp. The systemd user session is the runtime
-// supervisor: the CLI is only its editor, so exiting the CLI never affects
-// a running wallpaper.
+// Thin control surface over the wallpaper engine's systemd unit: the unit
+// identity, the declared-state projection (installed through unit_file),
+// the lifecycle, and the one apply chain. Backed by the sd-bus client in
+// systemd_unit.cpp — the user session is the runtime supervisor, the CLI
+// only edits it, so exiting the CLI never affects a running wallpaper.
 //
 // The unit name can be overridden with WALLPAPER_ENGINE_UNIT (tests).
 namespace engine_unit {
 
-std::string UnitName();                            // WALLPAPER_ENGINE_UNIT or "wallpaper-engine"
-std::string UnitPath();                            // ~/.config/systemd/user/<unit>.service
-std::string UnitFileContent(const Config& config); // unit text generated from config
-std::map<std::string, std::string> UnitBackgrounds(); // screen -> bg parsed from the unit's ExecStart
-bool WriteUnitFile(const Config& config, wallpaper_engine::Error* error = nullptr);
-bool DaemonReload(wallpaper_engine::Error* error = nullptr);
-bool StartUnit(wallpaper_engine::Error* error = nullptr);
-bool RestartUnit(wallpaper_engine::Error* error = nullptr);
-bool StopUnit(wallpaper_engine::Error* error = nullptr);
-std::string UnitState(wallpaper_engine::Error* error = nullptr); // active/inactive/failed/unknown
+std::string UnitName();  // WALLPAPER_ENGINE_UNIT or "wallpaper-engine"
+std::string UnitPath();  // ~/.config/systemd/user/<unit>.service
+
+// Screen -> wallpaper as the installed unit file declares it (the truth
+// even after manual unit edits); empty when nothing is declared yet.
+std::map<std::string, std::string> UnitBackgrounds();
+
+// Project the desired state into the unit file and install it atomically.
+wallpaper_engine::Result<void> WriteUnitFile(const Config& config);
+
+wallpaper_engine::Result<void> DaemonReload();
+wallpaper_engine::Result<void> StartUnit();
+wallpaper_engine::Result<void> RestartUnit();
+
+// Idempotent: stopping a unit that was never loaded already has the
+// desired end state and reports success.
+wallpaper_engine::Result<void> StopUnit();
+
+// The unit's ActiveState as the wire spells it ("active"/"inactive"/...).
+// A unit that is not loaded presents as "inactive" — the status contract
+// predates the distinction; systemd::ActiveState is the honest view for
+// callers that want it. Fails with Unknown when the bus does not answer.
+wallpaper_engine::Result<std::string> State();
 
 // The primary X output as RandR reports it (the engine renders on X11);
 // "DP-0" when no usable X server answers. Impure — it opens a display
 // connection, so call it at the boundary and pass the name down.
 std::string FallbackScreenName();
 
-// Every output the X server is currently driving, primary first — the names
-// --screen-root accepts. An unconnected connector is left out (no crtc, so
-// the engine cannot render on it); "DP-0" when no X server answers. Impure,
+// Every output the X server is currently driving, primary first — the
+// names --screen-root accepts. "DP-0" when no X server answers. Impure,
 // like FallbackScreenName.
 std::vector<std::string> ScreenNames();
 
-// Pure: the screen a bare `switch` targets, given the desktop's primary
-// output (pass FallbackScreenName()). Preference order — the primary output
-// when the config already drives it, then the only configured screen, then
-// the primary output. The rule this replaces ("whichever entry the map
-// happened to yield first") followed std::map's ordering, not the desktop.
-std::string DefaultScreenFor(const Config& config, const std::string& primaryOutput);
-
-// Pure: point |screen| at |wallpaperId| and return the updated config. An
-// empty screen or wallpaper leaves the config untouched (a screens[""]
-// entry would be unmatchable by the engine).
-Config AssignScreen(Config config, const std::string& screen, const std::string& wallpaperId);
-
-// The one apply chain: persist the config, project it into the unit file,
-// reload the manager, restart the unit. |error| carries the first step that
-// failed.
-bool ApplyConfig(const Config& config, wallpaper_engine::Error* error = nullptr);
+// The one apply chain: persist the desired state, project it into the unit
+// file the manager runs, reload, restart. The first failing step is the
+// error the caller sees, and one bus connection spans reload + restart.
+wallpaper_engine::Result<void> ApplyConfig(const Config& config);
 
 } // namespace engine_unit

@@ -21,7 +21,7 @@ private slots:
 
     void saveCreatesConfigFile() {
         Config c;
-        QVERIFY(c.Save());
+        QVERIFY(c.Save().has_value());
         QVERIFY(std::filesystem::exists(Config::ConfigPath()));
     }
 
@@ -35,7 +35,7 @@ private slots:
         written.automute = false;
         written.audioProcessing = false;
         written.screens["DP-0"] = "123456";
-        QVERIFY(written.Save());
+        QVERIFY(written.Save().has_value());
 
         const Config read = Config::Load();
         QCOMPARE(read.enginePath, written.enginePath);
@@ -69,7 +69,7 @@ private slots:
     void loadOnMissingFileGivesDefaults() {
         Config c;
         c.fps = 99;
-        QVERIFY(c.Save());
+        QVERIFY(c.Save().has_value());
         std::filesystem::remove(Config::ConfigPath());
         const Config fresh = Config::Load();
         QCOMPARE(fresh.fps, 30);
@@ -87,7 +87,7 @@ private slots:
     void loadOnCorruptFileReportsItButKeepsDefaults() {
         Config c;
         c.fps = 77;
-        QVERIFY(c.Save());
+        QVERIFY(c.Save().has_value());
         QFile f(QString::fromStdString(Config::ConfigPath()));
         QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
         f.write("{ this is not json");
@@ -102,7 +102,7 @@ private slots:
 
     void saveIsAtomicAndLeavesNoTempFile() {
         Config c;
-        QVERIFY(c.Save());
+        QVERIFY(c.Save().has_value());
         QVERIFY(!std::filesystem::exists(Config::ConfigPath() + ".tmp"));
     }
 
@@ -118,13 +118,12 @@ private slots:
 
         qputenv("XDG_CONFIG_HOME", blocked + "/sub");
         Config c;
-        wallpaper_engine::Error error;
-        const bool saved = c.Save(&error);
+        const auto saved = c.Save();
         qputenv("XDG_CONFIG_HOME", m_configHome.toUtf8()); // restore before asserting
 
-        QVERIFY(!saved);
-        QCOMPARE(error.kind, wallpaper_engine::Error::FileError);
-        QVERIFY(!error.message.empty());
+        QVERIFY(!saved.has_value());
+        QCOMPARE(saved.error().kind, wallpaper_engine::Error::FileError);
+        QVERIFY(!saved.error().message.empty());
     }
 
 private:

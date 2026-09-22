@@ -69,7 +69,7 @@ std::string Config::ConfigPath() {
     return ConfigDir() + "/config.json";
 }
 
-Config Config::Load(wallpaper_engine::Error* error) {
+Config Config::Load(wallpaper_engine::Error* problem) {
     Config config;
 
     // Resolve defaults from standard install locations; the config file
@@ -102,9 +102,9 @@ Config Config::Load(wallpaper_engine::Error* error) {
     if (!file.is_open()) {
         // a config that was never written is the normal first-run case; one
         // that exists and cannot be opened is a real failure
-        if (error != nullptr && fs::exists(ConfigPath(), existsEc)) {
-            error->kind = wallpaper_engine::Error::FileError;
-            error->message = "cannot read " + ConfigPath();
+        if (problem != nullptr && fs::exists(ConfigPath(), existsEc)) {
+            problem->kind = wallpaper_engine::Error::FileError;
+            problem->message = "cannot read " + ConfigPath();
         }
         return config;
     }
@@ -115,16 +115,16 @@ Config Config::Load(wallpaper_engine::Error* error) {
     } catch (const std::exception& parseError) {
         // corrupt file: the freshly resolved defaults survive, but the
         // caller now learns why it is looking at defaults
-        if (error != nullptr) {
-            error->kind = wallpaper_engine::Error::CorruptConfig;
-            error->message = ConfigPath() + ": " + parseError.what();
+        if (problem != nullptr) {
+            problem->kind = wallpaper_engine::Error::CorruptConfig;
+            problem->message = ConfigPath() + ": " + parseError.what();
         }
         return config;
     }
     if (!obj.is_object()) {
-        if (error != nullptr) {
-            error->kind = wallpaper_engine::Error::CorruptConfig;
-            error->message = ConfigPath() + ": not a JSON object";
+        if (problem != nullptr) {
+            problem->kind = wallpaper_engine::Error::CorruptConfig;
+            problem->message = ConfigPath() + ": not a JSON object";
         }
         return config;
     }
@@ -159,30 +159,7 @@ Config Config::Load(wallpaper_engine::Error* error) {
     return config;
 }
 
-Config Config::Patched(const nlohmann::json& patch) const {
-    if (!patch.is_object())
-        return *this;
-
-    Config updated = *this;
-    updated.enginePath = getStr(patch, "enginePath", updated.enginePath);
-    updated.assetsDir = getStr(patch, "assetsDir", updated.assetsDir);
-    updated.workshopDir = getStr(patch, "workshopDir", updated.workshopDir);
-    updated.display = getStr(patch, "display", updated.display);
-    updated.scaling = getStr(patch, "scaling", updated.scaling);
-    updated.clamp = getStr(patch, "clamp", updated.clamp);
-    updated.fps = getInt(patch, "fps", updated.fps);
-    updated.volume = getInt(patch, "volume", updated.volume);
-    updated.silent = getBool(patch, "silent", updated.silent);
-    updated.fullscreenPause = getBool(patch, "fullscreenPause", updated.fullscreenPause);
-    updated.automute = getBool(patch, "automute", updated.automute);
-    updated.audioProcessing = getBool(patch, "audioProcessing", updated.audioProcessing);
-    updated.disableParticles = getBool(patch, "disableParticles", updated.disableParticles);
-    updated.disableMouse = getBool(patch, "disableMouse", updated.disableMouse);
-    updated.disableParallax = getBool(patch, "disableParallax", updated.disableParallax);
-    return updated;
-}
-
-bool Config::Save(wallpaper_engine::Error* error) const {
+wallpaper_engine::Result<void> Config::Save() const {
     std::error_code ec;
     fs::create_directories(ConfigDir(), ec);
 
@@ -216,5 +193,23 @@ bool Config::Save(wallpaper_engine::Error* error) const {
 
     // indented, matching QJsonDocument::Indented; replaced atomically so a
     // concurrent reader (or a crash) never sees a half-written config
-    return wallpaper_engine::WriteFileAtomic(ConfigPath(), obj.dump(2) + "\n", error);
+    return wallpaper_engine::WriteFileAtomic(ConfigPath(), obj.dump(2) + "\n");
+}
+
+
+Config AssignScreen(Config config, const std::string& screen, const std::string& wallpaperId) {
+    // a screens[""] entry would be unmatchable by the engine: leave the
+    // config untouched rather than write one
+    if (screen.empty() || wallpaperId.empty())
+        return config;
+    config.screens[screen] = wallpaperId;
+    return config;
+}
+
+std::string DefaultScreenFor(const Config& config, const std::string& primaryOutput) {
+    if (config.screens.count(primaryOutput) != 0)
+        return primaryOutput; // the desktop already drives it
+    if (config.screens.size() == 1)
+        return config.screens.begin()->first; // the only candidate there is
+    return primaryOutput; // fresh config, or a multi-screen one without the primary
 }

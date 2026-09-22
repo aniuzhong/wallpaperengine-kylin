@@ -233,7 +233,9 @@ std::string RenderBmp(int width, int height) {
 }
 
 bool WriteTo(const std::string& path, int width, int height) {
-    return wallpaper_engine::WriteFileAtomic(path, RenderBmp(width, height));
+    // best-effort bitmap: the caller treats false as "no marker on screen",
+    // the reason lives in the shim log the user is already reading
+    return wallpaper_engine::WriteFileAtomic(path, RenderBmp(width, height)).has_value();
 }
 
 } // namespace marker

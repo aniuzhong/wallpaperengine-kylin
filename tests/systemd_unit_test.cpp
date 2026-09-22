@@ -178,6 +178,9 @@ private slots:
         QVERIFY(error.kind != wallpaper_engine::Error::NoError);
         QVERIFY(!error.dbusName.empty());
         QVERIFY(!error.message.empty());
+        // Tolerated() keys off this exact name — pin it so a systemd
+        // wording change cannot silently break the idempotent-stop promise
+        QVERIFY(error.dbusName.find("NoSuchUnit") != std::string::npos);
     }
 
     void transient_restartPreservesEnvironment() {

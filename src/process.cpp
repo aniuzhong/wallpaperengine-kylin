@@ -1,18 +1,21 @@
-#include "engineprocess.h"
+#include "process.h"
+
+#include "posix.h"
 
 #include <cerrno>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 #include <poll.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
-namespace engine_process {
+namespace process {
 
-int RunCaptured(const std::string& enginePath, const std::vector<std::string>& args, long timeoutMs,
-                std::string* output, bool* timedOut) {
+int RunCaptured(const std::string& program, const std::vector<std::string>& args,
+                std::chrono::milliseconds timeout, std::string* output, bool* timedOut) {
     if (timedOut != nullptr)
         *timedOut = false;
 
@@ -38,16 +41,17 @@ int RunCaptured(const std::string& enginePath, const std::vector<std::string>& a
         for (const int fd : { outPipe[0], outPipe[1], errPipe[0], errPipe[1] })
             close(fd);
         std::vector<char*> childArgs;
-        childArgs.push_back(const_cast<char*>(enginePath.c_str()));
+        childArgs.push_back(const_cast<char*>(program.c_str()));
         for (const std::string& arg : args)
             childArgs.push_back(const_cast<char*>(arg.c_str()));
         childArgs.push_back(nullptr);
-        execvp(enginePath.c_str(), childArgs.data());
+        execvp(program.c_str(), childArgs.data());
         _exit(127); // exec failed
     }
 
     close(outPipe[1]);
     close(errPipe[1]);
+    const long long timeoutMs = std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count();
     const long long deadline = [] {
         timespec now;
         clock_gettime(CLOCK_MONOTONIC, &now);
@@ -108,4 +112,70 @@ bool DidNotRun(int exitCode) {
     return exitCode == -1 || exitCode == 127;
 }
 
-} // namespace engine_process
+int RunAndWait(const std::vector<std::string>& argv) {
+    if (argv.empty())
+        return -1;
+    const pid_t pid = fork();
+    if (pid < 0)
+        return -1;
+    if (pid == 0) {
+        std::vector<char*> childArgs;
+        for (const std::string& arg : argv)
+            childArgs.push_back(const_cast<char*>(arg.c_str()));
+        childArgs.push_back(nullptr);
+        execvp(argv.front().c_str(), childArgs.data());
+        _exit(127); // exec failed
+    }
+    int status = 0;
+    waitpid(pid, &status, 0);
+    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+}
+
+bool SpawnDetached(const std::vector<std::string>& argv) {
+    // Whether |program| can be executed at all: an explicit path is checked
+    // directly, a bare name is searched along PATH.
+    const auto executableExists = [](const std::string& program) {
+        if (program.empty())
+            return false;
+        if (program.find('/') != std::string::npos)
+            return ::access(program.c_str(), X_OK) == 0;
+
+        const std::string path = wallpaper_engine::EnvOr("PATH", "/usr/local/bin:/usr/bin:/bin");
+        size_t start = 0;
+        while (start <= path.size()) {
+            const size_t end = path.find(':', start);
+            const size_t stop = end == std::string::npos ? path.size() : end;
+            if (stop > start && ::access((path.substr(start, stop - start) + "/" + program).c_str(), X_OK) == 0)
+                return true;
+            if (end == std::string::npos)
+                break;
+            start = end + 1;
+        }
+        return false;
+    };
+    if (argv.empty() || !executableExists(argv.front()))
+        return false;
+
+    const pid_t pid = fork();
+    if (pid < 0)
+        return false;
+    if (pid == 0) {
+        setsid();
+        const pid_t grandchild = fork();
+        if (grandchild != 0)
+            _exit(grandchild < 0 ? 1 : 0);
+
+        std::vector<char*> args;
+        for (const std::string& arg : argv)
+            args.push_back(const_cast<char*>(arg.c_str()));
+        args.push_back(nullptr);
+        execvp(argv.front().c_str(), args.data());
+        _exit(127); // exec failed
+    }
+
+    int status = 0;
+    waitpid(pid, &status, 0);
+    return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+}
+
+} // namespace process

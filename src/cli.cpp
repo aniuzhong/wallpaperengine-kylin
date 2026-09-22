@@ -2,20 +2,22 @@
 
 #include "argvbuilder.h"
 #include "config.h"
-#include "engineprocess.h"
 #include "engine_unit.h"
 #include "integration.h"
 #include "library.h"
+#include "process.h"
 #include "report.h"
 
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <map>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <filesystem>
@@ -62,10 +64,16 @@ int Fail(bool json, const std::string& what, const wallpaper_engine::Error& erro
     return EXIT_FAIL;
 }
 
+// The Result shape of the same exit: success passes straight through as
+// EXIT_OK, a failure funnels into the projection above.
+int Fail(bool json, const std::string& what, wallpaper_engine::Result<void>&& result) {
+    return result ? EXIT_OK : Fail(json, what, std::move(result).error());
+}
+
 int CmdStatus(bool json) {
     const Config config = Config::Load();
-    wallpaper_engine::Error busError;
-    const std::string state = engine_unit::UnitState(&busError);
+    auto state = engine_unit::State();
+    const std::string stateName = state ? *state : "unknown";
     // the unit file is what systemd actually runs; config.json is the
     // editor's draft. Prefer the unit's own ExecStart so status tells the
     // truth even after manual unit edits; fall back to config when the
@@ -76,17 +84,17 @@ int CmdStatus(bool json) {
 
     if (json) {
         const nlohmann::json root =
-            report::Status(engine_unit::UnitName(), state, screens, config.enginePath);
+            report::Status(engine_unit::UnitName(), stateName, screens, config.enginePath);
         std::printf("%s\n", root.dump().c_str());
         return EXIT_OK;
     }
 
-    std::printf("unit: %s (%s)\n", engine_unit::UnitName().c_str(), state.c_str());
+    std::printf("unit: %s (%s)\n", engine_unit::UnitName().c_str(), stateName.c_str());
     for (const auto& [screen, wallpaper] : screens)
         std::printf("screen %s: %s\n", screen.c_str(), wallpaper.c_str());
     std::printf("engine: %s\n", config.enginePath.c_str());
-    if (!busError.Ok())
-        std::printf("bus: %s\n", wallpaper_engine::Describe(busError).c_str());
+    if (!state)
+        std::printf("bus: %s\n", wallpaper_engine::Describe(state.error()).c_str());
     return EXIT_OK;
 }
 
@@ -145,17 +153,16 @@ int CmdSwitch(const std::vector<std::string>& args, bool json) {
     // only necessary when the caller did not name a screen.
     const std::string screen =
         requestedScreen.empty()
-            ? engine_unit::DefaultScreenFor(config, engine_unit::FallbackScreenName())
+            ? DefaultScreenFor(config, engine_unit::FallbackScreenName())
             : requestedScreen;
     if (screen.empty()) {
         std::printf("switch: no screen to target — pass --screen <name>\n");
         return EXIT_FAIL;
     }
 
-    wallpaper_engine::Error error;
-    const Config updated = engine_unit::AssignScreen(config, screen, id);
-    if (!engine_unit::ApplyConfig(updated, &error))
-        return Fail(json, "switch", error);
+    const Config updated = AssignScreen(config, screen, id);
+    if (auto applied = engine_unit::ApplyConfig(updated); !applied)
+        return Fail(json, "switch", std::move(applied).error());
 
     std::printf("switched: %s\n", id.c_str());
     return EXIT_OK;
@@ -165,15 +172,15 @@ int CmdProperties(const std::string& id) {
     const Config config = Config::Load();
     std::string output;
     bool timedOut = false;
-    const int exitCode = engine_process::RunCaptured(
-        config.enginePath, {"--list-properties", "--assets-dir", config.assetsDir, id}, 30000, &output,
-        &timedOut);
+    const int exitCode = process::RunCaptured(
+        config.enginePath, {"--list-properties", "--assets-dir", config.assetsDir, id},
+        std::chrono::seconds(30), &output, &timedOut);
     // the engine's own listing, verbatim: buffered rather than streamed so a
     // frontend can publish it as one value
     if (!output.empty())
         std::fwrite(output.data(), 1, output.size(), stdout);
 
-    if (engine_process::DidNotRun(exitCode)) {
+    if (process::DidNotRun(exitCode)) {
         wallpaper_engine::Error error;
         error.kind = wallpaper_engine::Error::Unknown;
         error.message = timedOut ? "the engine did not finish in time"
@@ -184,17 +191,15 @@ int CmdProperties(const std::string& id) {
 }
 
 int CmdSetupIntegration(bool json) {
-    wallpaper_engine::Error error;
-    if (!integration::Setup(&error))
-        return Fail(json, "integration failed", error);
+    if (auto r = integration::Setup(); !r)
+        return Fail(json, "integration failed", std::move(r).error());
     std::printf("integration configured: peony injected, desktop transparent\n");
     return EXIT_OK;
 }
 
 int CmdRemoveIntegration(bool json) {
-    wallpaper_engine::Error error;
-    if (!integration::Teardown(&error))
-        return Fail(json, "teardown-integration failed", error);
+    if (auto r = integration::Teardown(); !r)
+        return Fail(json, "teardown-integration failed", std::move(r).error());
     std::printf("integration removed: the previous wallpaper is back, "
                  "peony is running without the shim\n");
     return EXIT_OK;
@@ -208,7 +213,7 @@ int CmdDoctor() {
     std::printf("config: %s (%s)\n", configPath.c_str(),
                  fs::exists(configPath, ec) ? "present" : "missing");
     // "present" and "readable" are different answers: say which one it is
-    if (!configError.Ok())
+    if (configError.kind != wallpaper_engine::Error::NoError)
         std::printf("config problem: %s\n", wallpaper_engine::Describe(configError).c_str());
     std::printf("engine binary: %s (%s)\n", config.enginePath.c_str(),
                  fs::exists(config.enginePath, ec) ? "present" : "MISSING");
@@ -216,6 +221,32 @@ int CmdDoctor() {
                  fs::is_directory(config.assetsDir, ec) ? "present" : "MISSING");
     std::printf("workshop dir: %s (%d wallpapers)\n", config.workshopDir.c_str(),
                  static_cast<int> (ScanLibrary(config.workshopDir).size()));
+
+    // three states, compared: what the config wants (desired), what the
+    // installed unit file declares, and what the manager runs (the state
+    // line below). A drift is not an error — it is the answer to "why does
+    // the desktop not match what I configured?"
+    const std::map<std::string, std::string> declared = engine_unit::UnitBackgrounds();
+    int drifts = 0;
+    for (const auto& [screen, wallpaper] : config.screens) {
+        const auto it = declared.find(screen);
+        if (it == declared.end()) {
+            std::printf("drift: %s desired -> %s, not declared\n", screen.c_str(), wallpaper.c_str());
+            drifts++;
+        } else if (it->second != wallpaper) {
+            std::printf("drift: %s desired -> %s, declared %s\n", screen.c_str(), wallpaper.c_str(),
+                         it->second.c_str());
+            drifts++;
+        }
+    }
+    for (const auto& [screen, wallpaper] : declared) {
+        if (config.screens.count(screen) == 0) {
+            std::printf("drift: %s declared -> %s, not in config\n", screen.c_str(), wallpaper.c_str());
+            drifts++;
+        }
+    }
+    if (drifts == 0)
+        std::printf("drift: desired and declared agree\n");
 
     const integration::Status peony = integration::Detect();
     std::printf("peony: pid=%lld %s\n", static_cast<long long> (peony.peonyPid),
@@ -225,8 +256,9 @@ int CmdDoctor() {
     std::printf("shim: %s\n", shimPath.empty() ? "libpeony-alpha.so (MISSING)"
                                                     : shimPath.c_str());
 
+    auto state = engine_unit::State();
     std::printf("unit %s: %s, unit file %s\n", engine_unit::UnitName().c_str(),
-                 engine_unit::UnitState().c_str(), engine_unit::UnitPath().c_str());
+                 state.value_or("unknown").c_str(), engine_unit::UnitPath().c_str());
     return EXIT_OK;
 }
 
@@ -237,9 +269,8 @@ int CmdSelftest() {
     std::printf("engine: %s\n", config.enginePath.c_str());
     std::printf("screens: %d, fps: %d, silent: %s\n", static_cast<int> (config.screens.size()), config.fps,
                  config.silent ? "true" : "false");
-    wallpaper_engine::Error error;
-    if (!config.Save(&error))
-        return Fail(false, "selftest", error);
+    if (auto saved = config.Save(); !saved)
+        return Fail(false, "selftest", std::move(saved).error());
     return EXIT_OK;
 }
 
@@ -256,20 +287,16 @@ int RunCli(const std::vector<std::string>& args) {
     const bool json = std::find(rest.begin(), rest.end(), "--json") != rest.end();
 
     if (command == "start" || command == "resume") {
-        wallpaper_engine::Error error;
-        if (!engine_unit::WriteUnitFile(Config::Load(), &error) || !engine_unit::DaemonReload(&error) ||
-            !engine_unit::StartUnit(&error))
-            return Fail(json, command, error);
-        return EXIT_OK;
+        if (auto installed = engine_unit::WriteUnitFile(Config::Load()); !installed)
+            return Fail(json, command, std::move(installed).error());
+        if (auto reloaded = engine_unit::DaemonReload(); !reloaded)
+            return Fail(json, command, std::move(reloaded).error());
+        return Fail(json, command, engine_unit::StartUnit());
     }
-    if (command == "stop" || command == "pause") {
-        wallpaper_engine::Error error;
-        return engine_unit::StopUnit(&error) ? EXIT_OK : Fail(json, command, error);
-    }
-    if (command == "restart") {
-        wallpaper_engine::Error error;
-        return engine_unit::RestartUnit(&error) ? EXIT_OK : Fail(json, command, error);
-    }
+    if (command == "stop" || command == "pause")
+        return Fail(json, command, engine_unit::StopUnit());
+    if (command == "restart")
+        return Fail(json, command, engine_unit::RestartUnit());
     if (command == "status")
         return CmdStatus(json);
     if (command == "list")

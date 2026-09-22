@@ -3,6 +3,7 @@
 
 #include "../peonybuilder.h"
 #include "../posix.h"
+#include "../process.h"
 #include "../systemd_unit.h"
 
 #include <xcb/xcb.h>
@@ -12,6 +13,7 @@
 
 #include <chrono>
 #include <csignal>
+#include <thread>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
@@ -175,7 +177,7 @@ bool waitForPeonyExit(int timeoutMs) {
     while (timeoutMs > 0) {
         if (peonyGone())
             return true;
-        wallpaper_engine::SleepMs(100);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
         timeoutMs -= 100;
     }
     return peonyGone();
@@ -188,7 +190,7 @@ void stopPeonyProcesses() {
     if (!waitForPeonyExit(3000)) {
         for (const int64_t pid : findPeonyPids())
             ::kill(static_cast<pid_t>(pid), SIGKILL);
-        wallpaper_engine::SleepMs(300);
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
     }
 }
 
@@ -284,24 +286,6 @@ void setAccountBackground(const std::string& marker) {
     sd_bus_flush_close_unref(bus);
 }
 
-// fire-and-forget tool run; blocks until exit, result ignored — the shape
-// QProcess::execute() gave the gsettings call
-void runTool(const std::string& program, const std::vector<std::string>& args) {
-    const pid_t pid = fork();
-    if (pid < 0)
-        return;
-    if (pid == 0) {
-        std::vector<char*> argv{const_cast<char*>(program.c_str())};
-        for (const std::string& arg : args)
-            argv.push_back(const_cast<char*>(arg.c_str()));
-        argv.push_back(nullptr);
-        execvp(program.c_str(), argv.data());
-        _exit(127); // exec failed
-    }
-    int status = 0;
-    waitpid(pid, &status, 0);
-}
-
 } // namespace
 
 namespace integration {
@@ -340,7 +324,7 @@ Status Detect() {
     return status;
 }
 
-bool Setup(wallpaper_engine::Error* error) {
+wallpaper_engine::Result<void> Setup() {
     // ---- 1. marker wallpaper; accountsservice and gsettings point at it.
     // The shim nullifies the pixmap at load time, so a working
     // integration never shows it (if the injection is ever lost, the
@@ -352,11 +336,10 @@ bool Setup(wallpaper_engine::Error* error) {
     const std::string marker = markerPath();
     const auto [markerWidth, markerHeight] = markerSize();
     if (!marker::WriteTo(marker, markerWidth, markerHeight)) {
-        if (error != nullptr) {
-            error->kind = wallpaper_engine::Error::FileError;
-            error->message = "cannot write marker wallpaper to " + marker;
-        }
-        return false;
+        wallpaper_engine::Error fail;
+        fail.kind = wallpaper_engine::Error::FileError;
+        fail.message = "cannot write marker wallpaper to " + marker;
+        return tl::unexpected(std::move(fail));
     }
 
     // remember the pre-change wallpaper too: if the accountsservice write
@@ -376,12 +359,12 @@ bool Setup(wallpaper_engine::Error* error) {
         const std::string fromRunning = peony::FirstWallpaperIn(peonyEnvValue("PEONY_ALPHA_WALLPAPER"));
         if (!fromRunning.empty())
             previousBackground = fromRunning;
-        wallpaper_engine::WriteFileAtomic(previousBackgroundPath(), previousBackground + "\n");
+        (void)wallpaper_engine::WriteFileAtomic(previousBackgroundPath(), previousBackground + "\n");
     }
 
     setAccountBackground(marker);
     const std::string normalized = getAccountBackground();
-    runTool("gsettings", {"set", "org.mate.background", "picture-filename", marker});
+    process::RunAndWait({"gsettings", "set", "org.mate.background", "picture-filename", marker});
 
     // peony loads the accountsservice-normalized path at startup; gsettings
     // is what switchBackground() reads on wallpaper changes. Collect every
@@ -395,11 +378,8 @@ bool Setup(wallpaper_engine::Error* error) {
     // "already exists". The manager's stop is asynchronous, so the
     // switch-over waits for the unit to actually leave active state.
     auto bus = systemd::Connection::UserBus();
-    if (!bus) {
-        if (error != nullptr)
-            *error = std::move(bus).error();
-        return false;
-    }
+    if (!bus)
+        return tl::unexpected(std::move(bus).error());
     (void)systemd::Stop(*bus, kPeonyUnitId);
     (void)systemd::WaitInactive(*bus, kPeonyUnitId, std::chrono::milliseconds(5000));
     // a stale failed unit with the same name blocks re-creation — clear
@@ -417,13 +397,12 @@ bool Setup(wallpaper_engine::Error* error) {
 
     const std::string shimPath = LocateShim();
     if (shimPath.empty()) {
-        if (error != nullptr) {
-            error->kind = wallpaper_engine::Error::FileError;
-            error->message = "libpeony-alpha.so not found next to the frontend or in the standard "
-                             "library paths (looked in " +
-                             wallpaper_engine::ExeDir() + ")";
-        }
-        return false;
+        wallpaper_engine::Error fail;
+        fail.kind = wallpaper_engine::Error::FileError;
+        fail.message = "libpeony-alpha.so not found next to the frontend or in the standard "
+                       "library paths (looked in " +
+                       wallpaper_engine::ExeDir() + ")";
+        return tl::unexpected(std::move(fail));
     }
     const std::string logPath = dataDir() + "/peony-alpha.log";
     const std::map<std::string, std::string> peonyEnv = peony::BuildShimEnvironment(shimPath, wallpaperList);
@@ -434,32 +413,26 @@ bool Setup(wallpaper_engine::Error* error) {
     auto launched = systemd::StartTransient(*bus, spec);
     if (!launched) {
         // the typed D-Bus error survives to the caller: kind and error name
-        if (error != nullptr)
-            *error = std::move(launched).error();
-        return false;
+        return tl::unexpected(std::move(launched).error());
     }
 
     // ---- 4. verify the shim actually mapped into the new instance
     for (int waited = 0; waited < 10000; waited += 300) {
-        wallpaper_engine::SleepMs(300);
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
         const int64_t pid = findPeonyPid();
         if (pid == 0)
             continue;
-        if (shimMapped(pid)) {
-            if (error != nullptr)
-                *error = {};
-            return true;
-        }
+        if (shimMapped(pid))
+            return {};
     }
-    if (error != nullptr) {
-        error->kind = wallpaper_engine::Error::Unknown;
-        error->message = "peony relaunched but the shim did not map (list: " + wallpaperList +
-                         "; log: " + logPath + ")";
-    }
-    return false;
+    wallpaper_engine::Error fail;
+    fail.kind = wallpaper_engine::Error::Unknown;
+    fail.message = "peony relaunched but the shim did not map (list: " + wallpaperList +
+                   "; log: " + logPath + ")";
+    return tl::unexpected(std::move(fail));
 }
 
-bool Teardown(wallpaper_engine::Error* error) {
+wallpaper_engine::Result<void> Teardown() {
     // ---- 1. which wallpaper to put back. The recorded copy is
     // authoritative; without it (an install from before it existed) the
     // list the running peony was launched with still names it first.
@@ -493,7 +466,7 @@ bool Teardown(wallpaper_engine::Error* error) {
     // ---- 3. hand the desktop its own wallpaper back
     if (!previous.empty()) {
         setAccountBackground(previous);
-        runTool("gsettings", {"set", "org.mate.background", "picture-filename", previous});
+        process::RunAndWait({"gsettings", "set", "org.mate.background", "picture-filename", previous});
     }
 
     // leave nothing of ours behind: the record, the shim's log and the
@@ -507,33 +480,28 @@ bool Teardown(wallpaper_engine::Error* error) {
     // process, so once this returns no unit of ours is supervising
     // anything
     if (injected || existingPid == 0) {
-        if (!wallpaper_engine::SpawnDetached({"/usr/bin/peony-qt-desktop", "-w", "-d"})) {
-            if (error != nullptr) {
-                error->kind = wallpaper_engine::Error::FileError;
-                error->message = "cannot start /usr/bin/peony-qt-desktop; start it again from the "
-                                 "session menu to get the desktop icons back";
-            }
-            return false;
+        if (!process::SpawnDetached({"/usr/bin/peony-qt-desktop", "-w", "-d"})) {
+            wallpaper_engine::Error fail;
+            fail.kind = wallpaper_engine::Error::FileError;
+            fail.message = "cannot start /usr/bin/peony-qt-desktop; start it again from the "
+                           "session menu to get the desktop icons back";
+            return tl::unexpected(std::move(fail));
         }
     }
 
     // ---- 5. verify: alive, and genuinely without the shim
     for (int waited = 0; waited < 10000; waited += 300) {
-        wallpaper_engine::SleepMs(300);
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
         const int64_t pid = findPeonyPid();
         if (pid == 0)
             continue;
-        if (!shimMapped(pid)) {
-            if (error != nullptr)
-                *error = {};
-            return true;
-        }
+        if (!shimMapped(pid))
+            return {};
     }
-    if (error != nullptr) {
-        error->kind = wallpaper_engine::Error::Unknown;
-        error->message = "peony is running but the shim is still mapped into it";
-    }
-    return false;
+    wallpaper_engine::Error fail;
+    fail.kind = wallpaper_engine::Error::Unknown;
+    fail.message = "peony is running but the shim is still mapped into it";
+    return tl::unexpected(std::move(fail));
 }
 
 } // namespace integration

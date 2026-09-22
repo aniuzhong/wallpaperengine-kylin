@@ -1,6 +1,7 @@
 #pragma once
 
 #include "error.h"
+#include "result.h"
 
 #include <cstdint>
 #include <map>
@@ -41,17 +42,23 @@ struct Config {
     // A missing file is not an error: the resolved defaults are the answer.
     // A file that exists but does not parse reports CorruptConfig — the
     // defaults still come back, but the caller can now tell the two apart
-    // (and say so, instead of silently showing defaults).
-    static Config Load(wallpaper_engine::Error* error = nullptr);
+    // (and say so, instead of silently showing defaults). Load never fails,
+    // so the slot is a diagnostics channel, not the Result convention.
+    static Config Load(wallpaper_engine::Error* problem = nullptr);
 
     // Atomic replace (write-temp + rename): a concurrent reader sees the old
     // config or the new one, never a truncated file.
-    bool Save(wallpaper_engine::Error* error = nullptr) const;
-
-    // A copy with the user-editable fields updated from |patch|. Unknown keys
-    // are ignored (forward compatibility) and so are wrongly-typed values
-    // (the current value survives) — the same tolerance load() shows the
-    // file. Screens and per-wallpaper properties are not patchable: they are
-    // the result of applying a wallpaper, not a setting.
-    Config Patched(const nlohmann::json& patch) const;
+    wallpaper_engine::Result<void> Save() const;
 };
+
+// Pure: point |screen| at |wallpaperId| and return the updated config. An
+// empty screen or wallpaper leaves the config untouched (a screens[""]
+// entry would be unmatchable by the engine).
+Config AssignScreen(Config config, const std::string& screen, const std::string& wallpaperId);
+
+// Pure: the screen a bare `switch` targets, given the desktop's primary
+// output. Preference order — the primary output when the config already
+// drives it, then the only configured screen, then the primary output. The
+// rule this replaces ("whichever entry the map happened to yield first")
+// followed std::map's ordering, not the desktop.
+std::string DefaultScreenFor(const Config& config, const std::string& primaryOutput);

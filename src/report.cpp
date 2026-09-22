@@ -30,8 +30,6 @@ const char* kindName(wallpaper_engine::Error::Kind kind) {
         return "bus-unreachable";
     case wallpaper_engine::Error::NoSuchUnit:
         return "no-such-unit";
-    case wallpaper_engine::Error::JobFailed:
-        return "job-failed";
     case wallpaper_engine::Error::InvalidInput:
         return "invalid-input";
     case wallpaper_engine::Error::FileError:
@@ -46,14 +44,14 @@ const char* kindName(wallpaper_engine::Error::Kind kind) {
 
 } // namespace
 
-nlohmann::json Status(const std::string& UnitName, const std::string& state,
+nlohmann::json Status(const std::string& unitName, const std::string& state,
                       const std::map<std::string, std::string>& screens, const std::string& enginePath) {
     nlohmann::json screensJson = nlohmann::json::object();
     for (const auto& [screen, wallpaper] : screens)
         screensJson[screen] = wallpaper;
 
     nlohmann::json status;
-    status["unit"] = UnitName;
+    status["unit"] = unitName;
     status["state"] = state;
     status["screens"] = std::move(screensJson);
     status["enginePath"] = enginePath;

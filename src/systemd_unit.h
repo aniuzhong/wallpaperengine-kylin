@@ -1,7 +1,7 @@
 #pragma once
 
-#include "error.h"
 #include "exec_args.h" // ExecCommand
+#include "result.h"
 
 #include <chrono>
 #include <cstdint>
@@ -11,8 +11,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-
-#include <tl/expected.hpp>
 
 struct sd_bus;
 
@@ -26,10 +24,9 @@ struct sd_bus;
 // subprocesses; one operation is one round trip, state is polled.
 namespace systemd {
 
-// The return type of every fallible call in the module. tl::expected is
-// std::expected backported to C++17, which the toolchain pins.
+// Module-local spelling of the project-wide Result (src/error.h).
 template <typename T>
-using Result = tl::expected<T, wallpaper_engine::Error>;
+using Result = wallpaper_engine::Result<T>;
 
 // ActiveState per systemd. The wire names parse at the boundary once
 // (UnitStateFromName); callers compare enumerators, and anything new or

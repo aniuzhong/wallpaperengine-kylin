@@ -9,12 +9,12 @@ add_test (NAME exec_args_test COMMAND exec_args_test)
 
 # T0: Config -> argv mapping (pure)
 add_executable (argvbuilder_test argvbuilder_test.cpp ../src/argvbuilder.cpp ../src/config.cpp)
-target_link_libraries (argvbuilder_test PRIVATE Qt5::Core Qt5::Test nlohmann_json::nlohmann_json)
+target_link_libraries (argvbuilder_test PRIVATE Qt5::Core Qt5::Test nlohmann_json::nlohmann_json tl::expected)
 add_test (NAME argvbuilder_test COMMAND argvbuilder_test)
 
 # T0: Config persistence roundtrip
 add_executable (config_test config_test.cpp ../src/config.cpp)
-target_link_libraries (config_test PRIVATE Qt5::Core Qt5::Test nlohmann_json::nlohmann_json)
+target_link_libraries (config_test PRIVATE Qt5::Core Qt5::Test nlohmann_json::nlohmann_json tl::expected)
 add_test (NAME config_test COMMAND config_test)
 
 # T0: library metadata scan (pure; previews are paths, no decoding here)
@@ -24,7 +24,7 @@ add_test (NAME library_test COMMAND library_test)
 
 # T0: the integration marker's rendering half (BMP structure, determinism)
 add_executable (marker_test marker_test.cpp ../src/integration/marker.cpp)
-target_link_libraries (marker_test PRIVATE Qt5::Core Qt5::Test)
+target_link_libraries (marker_test PRIVATE Qt5::Core Qt5::Test tl::expected)
 add_test (NAME marker_test COMMAND marker_test)
 
 # T0: JSON projections of service data (pure) — the wire contract the CLI
