@@ -2,8 +2,8 @@
 
 // I/O helpers shared by the service layer — the replacement for what
 // QSaveFile's atomic-save and environment access used to provide. Nothing
-// here depends on Qt. Location computation lives in paths.h; this header
-// only acts on paths it is handed.
+// here depends on Qt. Location computation is inlined in the files that
+// need it; this header only acts on paths it is handed.
 
 #include "error.h"
 #include "result.h"

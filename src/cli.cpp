@@ -29,9 +29,6 @@
 
 namespace fs = std::filesystem;
 
-namespace we {
-namespace paths {
-
 inline std::string HomeDir() {
     const char* home = getenv("HOME");
     if (home != nullptr && *home != '\0')
@@ -55,9 +52,6 @@ inline std::string ProductConfigDir() {
 inline std::string ConfigFile() {
     return ProductConfigDir() + "/config.json";
 }
-
-} // namespace paths
-} // namespace we
 
 namespace cli {
 
@@ -253,7 +247,7 @@ int CmdDoctor() {
     we::Error configError;
     const config::Config config = config::Config::Load(&configError);
     std::error_code ec;
-    const std::string configPath = we::paths::ConfigFile();
+    const std::string configPath = ConfigFile();
     std::printf("config: %s (%s)\n", configPath.c_str(),
                  fs::exists(configPath, ec) ? "present" : "missing");
     // "present" and "readable" are different answers: say which one it is
@@ -309,7 +303,7 @@ int CmdDoctor() {
 int CmdSelftest() {
     // load the config (creating defaults on first run) and report
     const config::Config config = config::Config::Load();
-    std::printf("config path: %s\n", we::paths::ConfigFile().c_str());
+    std::printf("config path: %s\n", ConfigFile().c_str());
     std::printf("engine: %s\n", config.enginePath.c_str());
     std::printf("screens: %d, fps: %d, silent: %s\n", static_cast<int> (config.screens.size()), config.fps,
                  config.silent ? "true" : "false");

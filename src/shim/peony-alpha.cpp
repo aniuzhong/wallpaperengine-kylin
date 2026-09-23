@@ -68,9 +68,6 @@
 #include <time.h>
 #include <unistd.h>
 
-namespace we {
-namespace paths {
-
 inline std::string HomeDir() {
     const char* home = getenv("HOME");
     if (home != nullptr && *home != '\0')
@@ -98,9 +95,6 @@ inline std::string PeonyDataDir() {
 inline std::string PeonyShimLog() {
     return PeonyDataDir() + "/peony-alpha.log";
 }
-
-} // namespace paths
-} // namespace we
 
 // ---- logging ---------------------------------------------------------------
 //
@@ -132,7 +126,7 @@ inline std::string PeonyShimLog() {
 
 namespace {
 
-// The one log destination: we::paths::PeonyShimLog() — literally the same
+// The one log destination: PeonyShimLog() — literally the same
 // function the service layer calls (README "Names" — the file belongs to
 // the <host>-<effect> pair), so the two sides cannot drift. Header-only,
 // so sharing it costs the shim no link dependency. Environment only, no
@@ -140,7 +134,7 @@ namespace {
 // outside a setup pass) open() fails and logging stays off rather than the
 // shim growing directory-management behavior.
 std::string log_path() {
-    return we::paths::PeonyShimLog();
+    return PeonyShimLog();
 }
 
 int log_fd() {

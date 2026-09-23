@@ -29,9 +29,6 @@
 
 namespace fs = std::filesystem;
 
-namespace we {
-namespace paths {
-
 inline std::string HomeDir() {
     const char* home = getenv("HOME");
     if (home != nullptr && *home != '\0')
@@ -93,9 +90,6 @@ inline std::vector<std::string> ShimCandidates() {
     return candidates;
 }
 
-} // namespace paths
-} // namespace we
-
 namespace {
 
 // The transient unit supervising the injected shell (Names grammar:
@@ -126,7 +120,7 @@ std::pair<int, int> markerSize()
 }
 
 // What the desktop's wallpaper was before setup pointed it at the marker
-// (we::paths::PeonyPreviousBackground): written by Setup(), read (and
+// (PeonyPreviousBackground): written by Setup(), read (and
 // removed) by Teardown(); without it the only remaining copy is inside the
 // environment the injected peony was launched with.
 
@@ -323,7 +317,7 @@ namespace integration {
 // directories a bin/ + lib/ install() layout produces, then the standard
 // system library paths). Returns an empty string when nothing matches.
 std::string LocateShim() {
-    for (const std::string& candidate : we::paths::ShimCandidates())
+    for (const std::string& candidate : ShimCandidates())
         if (fs::exists(candidate))
             return candidate;
     return {};
@@ -347,10 +341,10 @@ we::Result<void> Setup() {
     // integration never shows it (if the injection is ever lost, the
     // image on screen carries the recovery instructions).
     std::error_code fsEc;
-    fs::create_directories(we::paths::PeonyDataDir(), fsEc);
-    fs::remove(we::paths::PeonyShimLog(), fsEc); // fresh log per setup
+    fs::create_directories(PeonyDataDir(), fsEc);
+    fs::remove(PeonyShimLog(), fsEc); // fresh log per setup
 
-    const std::string marker = we::paths::PeonyMarker();
+    const std::string marker = PeonyMarker();
     const auto [markerWidth, markerHeight] = markerSize();
     if (!marker::WriteTo(marker, markerWidth, markerHeight)) {
         we::Error fail;
@@ -372,11 +366,11 @@ we::Result<void> Setup() {
     // wallpaper. The list that peony was launched with still starts with
     // the real one.
     std::error_code recordEc;
-    if (!fs::exists(we::paths::PeonyPreviousBackground(), recordEc)) {
+    if (!fs::exists(PeonyPreviousBackground(), recordEc)) {
         const std::string fromRunning = peony::FirstWallpaperIn(peonyEnvValue("PEONY_ALPHA_WALLPAPER"));
         if (!fromRunning.empty())
             previousBackground = fromRunning;
-        (void)we::WriteFileAtomic(we::paths::PeonyPreviousBackground(), previousBackground + "\n");
+        (void)we::WriteFileAtomic(PeonyPreviousBackground(), previousBackground + "\n");
     }
 
     setAccountBackground(marker);
@@ -418,10 +412,10 @@ we::Result<void> Setup() {
         fail.kind = we::Error::FileError;
         fail.message = "libpeony-alpha.so not found next to the frontend or in the standard "
                        "library paths (looked in " +
-                       we::paths::ExeDir() + ")";
+                       ExeDir() + ")";
         return tl::unexpected(std::move(fail));
     }
-    const std::string logPath = we::paths::PeonyShimLog();
+    const std::string logPath = PeonyShimLog();
     const std::map<std::string, std::string> peonyEnv = peony::BuildShimEnvironment(shimPath, wallpaperList);
     systemd::TransientSpec spec;
     spec.unit = kPeonyUnitId;
@@ -454,7 +448,7 @@ we::Result<void> Teardown() {
     // authoritative; without it (an install from before it existed) the
     // list the running peony was launched with still names it first.
     std::string previous;
-    if (std::string contents; readSmallFile(we::paths::PeonyPreviousBackground(), contents)) {
+    if (std::string contents; readSmallFile(PeonyPreviousBackground(), contents)) {
         previous = contents;
         while (!previous.empty() && (previous.back() == '\n' || previous.back() == '\r'))
             previous.pop_back();
@@ -489,9 +483,9 @@ we::Result<void> Teardown() {
     // leave nothing of ours behind: the record, the shim's log and the
     // marker are all consumables of an integration that no longer exists
     std::error_code removeEc;
-    fs::remove(we::paths::PeonyPreviousBackground(), removeEc);
-    fs::remove(we::paths::PeonyShimLog(), removeEc);
-    fs::remove(we::paths::PeonyMarker(), removeEc);
+    fs::remove(PeonyPreviousBackground(), removeEc);
+    fs::remove(PeonyShimLog(), removeEc);
+    fs::remove(PeonyMarker(), removeEc);
 
     // ---- 4. relaunch peony with nothing injected — an ordinary detached
     // process, so once this returns no unit of ours is supervising

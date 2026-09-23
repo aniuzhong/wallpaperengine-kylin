@@ -17,9 +17,6 @@
 #include <pwd.h>
 #include <unistd.h>
 
-namespace we {
-namespace paths {
-
 inline std::string HomeDir() {
     const char* home = getenv("HOME");
     if (home != nullptr && *home != '\0')
@@ -43,9 +40,6 @@ inline std::string ProductConfigDir() {
 inline std::string ConfigFile() {
     return ProductConfigDir() + "/config.json";
 }
-
-} // namespace paths
-} // namespace we
 
 #ifndef WALLPAPER_ENGINE_BIN
 #define WALLPAPER_ENGINE_BIN "/usr/bin/true"
@@ -97,7 +91,7 @@ private slots:
 
         // back up the user's config wholesale; cleanupTestCase puts the
         // exact bytes back (or removes the file when there was none)
-        const QString configPath = QString::fromStdString(we::paths::ConfigFile());
+        const QString configPath = QString::fromStdString(ConfigFile());
         QFile configFile(configPath);
         m_configExisted = configFile.exists();
         if (m_configExisted && configFile.open(QIODevice::ReadOnly))
@@ -193,7 +187,7 @@ private slots:
 
     void cleanupTestCase() {
         // put the user's config back exactly as it was
-        const QString configPath = QString::fromStdString(we::paths::ConfigFile());
+        const QString configPath = QString::fromStdString(ConfigFile());
         if (!m_configExisted) {
             QFile::remove(configPath);
             return;

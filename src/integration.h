@@ -33,7 +33,7 @@ Status Detect();
 // directory (build tree, and layouts that ship the pair together), the
 // library directory a bin/ + lib/ install() layout produces, then the
 // standard system library paths. Returns an empty string when nothing
-// matches.
+// matches. Uses ShimCandidates() for the candidate list.
 std::string LocateShim();
 
 // Full integration pass:

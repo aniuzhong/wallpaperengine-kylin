@@ -11,9 +11,6 @@
 #include <pwd.h>
 #include <unistd.h>
 
-namespace we {
-namespace paths {
-
 inline std::string HomeDir() {
     const char* home = getenv("HOME");
     if (home != nullptr && *home != '\0')
@@ -38,9 +35,6 @@ inline std::string ConfigFile() {
     return ProductConfigDir() + "/config.json";
 }
 
-} // namespace paths
-} // namespace we
-
 class ConfigTest : public QObject {
     Q_OBJECT
 
@@ -55,7 +49,7 @@ private slots:
     void saveCreatesConfigFile() {
         config::Config c;
         QVERIFY(c.Save().has_value());
-        QVERIFY(std::filesystem::exists(we::paths::ConfigFile()));
+        QVERIFY(std::filesystem::exists(ConfigFile()));
     }
 
     void roundtrip_preservesFields() {
@@ -85,7 +79,7 @@ private slots:
         // forward/backward compatibility: extra keys must not break loading
         config::Config c;
         c.Save();
-        QFile f(QString::fromStdString(we::paths::ConfigFile()));
+        QFile f(QString::fromStdString(ConfigFile()));
         QVERIFY(f.open(QIODevice::ReadOnly));
         const QJsonObject obj = QJsonDocument::fromJson(f.readAll()).object();
         f.close();
@@ -103,7 +97,7 @@ private slots:
         config::Config c;
         c.fps = 99;
         QVERIFY(c.Save().has_value());
-        std::filesystem::remove(we::paths::ConfigFile());
+        std::filesystem::remove(ConfigFile());
         const config::Config fresh = config::Config::Load();
         QCOMPARE(fresh.fps, 30);
         QVERIFY(fresh.silent);
@@ -111,7 +105,7 @@ private slots:
 
     void loadOnMissingFileIsNotAnError() {
         // the first-run case: defaults are the answer, not a failure
-        std::filesystem::remove(we::paths::ConfigFile());
+        std::filesystem::remove(ConfigFile());
         we::Error error;
         config::Config::Load(&error);
         QCOMPARE(error.kind, we::Error::NoError);
@@ -121,7 +115,7 @@ private slots:
         config::Config c;
         c.fps = 77;
         QVERIFY(c.Save().has_value());
-        QFile f(QString::fromStdString(we::paths::ConfigFile()));
+        QFile f(QString::fromStdString(ConfigFile()));
         QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
         f.write("{ this is not json");
         f.close();
@@ -136,7 +130,7 @@ private slots:
     void saveIsAtomicAndLeavesNoTempFile() {
         config::Config c;
         QVERIFY(c.Save().has_value());
-        QVERIFY(!std::filesystem::exists(we::paths::ConfigFile() + ".tmp"));
+        QVERIFY(!std::filesystem::exists(ConfigFile() + ".tmp"));
     }
 
     void failedSaveReportsFileError() {

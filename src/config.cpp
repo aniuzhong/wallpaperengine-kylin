@@ -16,9 +16,6 @@
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 
-namespace we {
-namespace paths {
-
 inline std::string HomeDir() {
     const char* home = getenv("HOME");
     if (home != nullptr && *home != '\0')
@@ -105,9 +102,6 @@ inline std::vector<std::string> SteamWorkshopCandidates() {
     return candidates;
 }
 
-} // namespace paths
-} // namespace we
-
 namespace config {
 
 namespace {
@@ -154,17 +148,17 @@ Config Config::Load(we::Error* problem) {
 
     // Resolve defaults from standard install locations; the config file
     // (and a .deb install) overrides them.
-    const std::vector<std::string> engineCandidates = we::paths::EngineCandidates();
+    const std::vector<std::string> engineCandidates = EngineCandidates();
     config.enginePath = firstExisting(engineCandidates, engineCandidates.front());
 
     // an empty result is intentional: argvbuilder then omits --assets-dir
     // and the engine runs its own auto-detection
-    config.assetsDir = firstExisting(we::paths::SteamAssetsCandidates(), "");
-    config.workshopDir = firstExisting(we::paths::SteamWorkshopCandidates(),
-                                       we::paths::SteamWorkshopCandidates().front());
+    config.assetsDir = firstExisting(SteamAssetsCandidates(), "");
+    config.workshopDir = firstExisting(SteamWorkshopCandidates(),
+                                       SteamWorkshopCandidates().front());
 
     std::error_code existsEc;
-    const std::string configPath = we::paths::ConfigFile();
+    const std::string configPath = ConfigFile();
     std::ifstream file(configPath);
     if (!file.is_open()) {
         // a config that was never written is the normal first-run case; one
@@ -228,7 +222,7 @@ Config Config::Load(we::Error* problem) {
 
 we::Result<void> Config::Save() const {
     std::error_code ec;
-    fs::create_directories(we::paths::ProductConfigDir(), ec);
+    fs::create_directories(ProductConfigDir(), ec);
 
     json obj;
     obj["schemaVersion"] = kSchemaVersion;
@@ -260,7 +254,7 @@ we::Result<void> Config::Save() const {
 
     // indented, matching QJsonDocument::Indented; replaced atomically so a
     // concurrent reader (or a crash) never sees a half-written config
-    return we::WriteFileAtomic(we::paths::ConfigFile(), obj.dump(2) + "\n");
+    return we::WriteFileAtomic(ConfigFile(), obj.dump(2) + "\n");
 }
 
 

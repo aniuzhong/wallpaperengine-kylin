@@ -16,9 +16,6 @@
 
 namespace fs = std::filesystem;
 
-namespace we {
-namespace paths {
-
 inline std::string HomeDir() {
     const char* home = getenv("HOME");
     if (home != nullptr && *home != '\0')
@@ -32,13 +29,10 @@ inline std::string SystemdUserUnit(const std::string& unit) {
     return HomeDir() + "/.config/systemd/user/" + unit + ".service";
 }
 
-} // namespace paths
-} // namespace we
-
 namespace unit_file {
 
 std::string Path(const std::string& unit) {
-    return we::paths::SystemdUserUnit(unit);
+    return SystemdUserUnit(unit);
 }
 
 std::string Text(const config::Config& config, const std::string& xauthority) {

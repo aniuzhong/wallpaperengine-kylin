@@ -43,7 +43,7 @@ struct Config {
     // defaults still come back, but the caller can now tell the two apart
     // (and say so, instead of silently showing defaults). Load never fails,
     // so the slot is a diagnostics channel, not the Result convention.
-    // The file itself lives at we::paths::ConfigFile().
+    // The file itself lives at ConfigFile().
     static Config Load(we::Error* problem = nullptr);
 
     // Atomic replace (write-temp + rename): a concurrent reader sees the old
