@@ -3,7 +3,8 @@
 // and exercises the pure entry points. Guards the layer's Qt-free boundary
 // — a single Qt include creeping into src/ (outside hook/) breaks this
 // link.
-#include "../src/argvbuilder.h"
+#include "../src/projection.h"
+#include "../src/lwe/grammar.h"
 #include "../src/library.h"
 #include "../src/exec_args.h"
 #include "../src/cli.h"
@@ -25,11 +26,12 @@ int main() {
         return 1;
     }
 
-    // config -> argv mapping off the defaults (empty screens: no screen flags)
+    // config -> argument set -> argv, off the defaults (empty screens: no
+    // screen groups). argv[0] belongs to the caller, so --fps leads here.
     const config::Config config;
-    const std::vector<std::string> argv = argvbuilder::BuildArgv(config);
-    if (argv.empty() || argv.front() != config.enginePath) {
-        std::printf("smoke: argvbuilder::BuildArgv failed\n");
+    const std::vector<std::string> argv = lwe::ToArgv(projection::ToArguments(config));
+    if (argv.empty() || argv.front() != "--fps") {
+        std::printf("smoke: lwe::ToArgv failed\n");
         return 1;
     }
 

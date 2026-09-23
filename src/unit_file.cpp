@@ -1,9 +1,9 @@
 #include "unit_file.h"
 
-#include "argvbuilder.h"
-#include "engine.h"
 #include "exec_args.h"
+#include "lwe/grammar.h"
 #include "posix.h"
+#include "projection.h"
 
 #include <cstdlib>
 #include <cstring>
@@ -38,9 +38,12 @@ std::string Path(const std::string& unit) {
 std::string Text(const config::Config& config, const std::string& xauthority) {
     // systemd ExecStart quoting: EscapeExecArg quotes arguments containing
     // whitespace and doubles "$"/"%" so systemd's substitution does not eat
-    // them; Backgrounds() inverts exactly this escaping
+    // them; Backgrounds() inverts exactly this escaping. argv[0] is the
+    // engine path — the module that owns the argument grammar never sees it.
+    std::vector<std::string> command = lwe::ToArgv(projection::ToArguments(config));
+    command.insert(command.begin(), config.enginePath);
     std::string exec;
-    for (const std::string& arg : argvbuilder::BuildArgv(config)) {
+    for (const std::string& arg : command) {
         if (!exec.empty())
             exec += ' ';
         exec += systemd::EscapeExecArg(arg);
@@ -79,9 +82,10 @@ std::map<std::string, std::string> Backgrounds(const std::string& unit) {
     if (!file.is_open())
         return result;
 
-    // the unit file is what systemd actually runs; parse its ExecStart so
-    // status reflects reality even after manual unit edits. ParseExecArgs
-    // inverts the escaping Text() applied.
+    // the unit file is what systemd actually runs; read its ExecStart back
+    // through the same grammar the writer used, so status tells the truth
+    // even after manual unit edits. ParseExecArgs inverts the escaping
+    // Text() applied; FromArgv inverts the argument grammar itself.
     std::string content { std::istreambuf_iterator<char> (file), std::istreambuf_iterator<char> () };
     constexpr const char* execKey = "ExecStart=";
     size_t lineStart = 0;
@@ -94,14 +98,11 @@ std::map<std::string, std::string> Backgrounds(const std::string& unit) {
         if (line.rfind(execKey, 0) != 0)
             continue;
 
-        const std::vector<std::string> args = systemd::ParseExecArgs(line.substr(std::strlen(execKey)));
-        std::string screen;
-        for (size_t i = 0; i < args.size(); i++) {
-            if (args[i] == "--screen-root" && i + 1 < args.size())
-                screen = args[++i];
-            else if (args[i] == "--bg" && i + 1 < args.size() && !screen.empty())
-                result[screen] = args[++i];
-        }
+        std::vector<std::string> command = systemd::ParseExecArgs(line.substr(std::strlen(execKey)));
+        if (!command.empty())
+            command.erase(command.begin()); // argv[0]: the engine path, not grammar
+        for (const lwe::ScreenBinding& screen : lwe::FromArgv(command).screens)
+            result[screen.screen] = screen.background;
         break; // exactly one ExecStart per generated unit
     }
     return result;
@@ -110,17 +111,13 @@ std::map<std::string, std::string> Backgrounds(const std::string& unit) {
 we::Result<void> Install(const config::Config& config, const std::string& unit) {
     // front-load the engine's constraints: an invocation the engine would
     // refuse must fail here, with the rule named, instead of installing a
-    // unit that dies on start. One diagnostic per line in the message.
-    const engine::Invocation invocation = argvbuilder::Project(config);
-    const std::vector<engine::Diagnostic> problems = engine::Validate(invocation);
+    // unit that dies on start. One diagnostic per problem in the message.
+    const std::vector<lwe::Diagnostic> problems =
+        lwe::Validate(projection::ToArguments(config), lwe::Scope::Persistable);
     if (!problems.empty()) {
         we::Error error;
         error.kind = we::Error::InvalidInput;
-        for (const engine::Diagnostic& problem : problems) {
-            if (!error.message.empty())
-                error.message += "; ";
-            error.message += problem.flag.empty() ? problem.problem : problem.flag + ": " + problem.problem;
-        }
+        error.message = lwe::Describe(problems);
         return tl::unexpected(std::move(error));
     }
 

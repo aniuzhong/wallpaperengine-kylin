@@ -151,7 +151,7 @@ Config Config::Load(we::Error* problem) {
     const std::vector<std::string> engineCandidates = EngineCandidates();
     config.enginePath = firstExisting(engineCandidates, engineCandidates.front());
 
-    // an empty result is intentional: argvbuilder then omits --assets-dir
+    // an empty result is intentional: the projection then omits --assets-dir
     // and the engine runs its own auto-detection
     config.assetsDir = firstExisting(SteamAssetsCandidates(), "");
     config.workshopDir = firstExisting(SteamWorkshopCandidates(),

@@ -17,7 +17,7 @@ ARG KYLIN_BASE=ghcr.io/aniuzhong/kylin:10.1-sp1-hwe-2303
 # push (rebuild command on the deps stage below).
 ARG BASE=ghcr.io/aniuzhong/kylin-dev:10.1
 
-# Upstream provenance: cmake fetches the engine at LWPE_REF (CMakeLists)
+# Upstream provenance: cmake fetches the engine at LWE_REF (CMakeLists)
 # and applies patches/ — a patch that no longer applies fails the build.
 
 # ------------------------------------------------------- dev image (deps)
@@ -59,7 +59,7 @@ ENV PATH=/opt/cmake/bin:$PATH
 # ------------------------------------------------------------------ builder
 FROM deps AS builder
 
-# Upstream provenance: cmake fetches the engine at the pinned LWPE_REF and
+# Upstream provenance: cmake fetches the engine at the pinned LWE_REF and
 # applies the patches/ series — the same `cmake -DBUILD_ENGINE=ON` a local
 # Kylin host runs. A patch that no longer applies fails the build instead of
 # producing a broken deb.

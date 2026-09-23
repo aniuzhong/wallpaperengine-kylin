@@ -7,23 +7,26 @@ add_executable (exec_args_test exec_args_test.cpp ../src/exec_args.cpp)
 target_link_libraries (exec_args_test PRIVATE Qt5::Core Qt5::Test)
 add_test (NAME exec_args_test COMMAND exec_args_test)
 
-# T0: Config -> argv mapping (pure)
-add_executable (argvbuilder_test argvbuilder_test.cpp ../src/argvbuilder.cpp ../src/engine.cpp ../src/config.cpp)
-target_link_libraries (argvbuilder_test PRIVATE Qt5::Core Qt5::Test nlohmann_json::nlohmann_json tl::expected)
-add_test (NAME argvbuilder_test COMMAND argvbuilder_test)
+# T0: Config -> arguments mapping (pure)
 
-# T0: the engine CLI model (pure; contract table + Validate + Emit). The
-# drift sentinel reads the engine's own ApplicationContext.cpp whenever the
-# hand-carried third_party checkout is present and skips otherwise.
+# T0: the lwe grammar table — both interpreters (ToArgv/FromArgv), Validate,
+# and the upstream reconciliation. The drift sentinel reads the engine's own
+# ApplicationContext.cpp whenever the hand-carried third_party checkout is
+# present and skips otherwise.
 if (EXISTS "${CMAKE_SOURCE_DIR}/third_party/linux-wallpaperengine/src/WallpaperEngine/Application/ApplicationContext.cpp")
     set (ENGINE_TEST_DEFS ENGINE_SOURCE_PATH="${CMAKE_SOURCE_DIR}/third_party/linux-wallpaperengine/src/WallpaperEngine/Application/ApplicationContext.cpp")
 else ()
     set (ENGINE_TEST_DEFS)
 endif ()
-add_executable (engine_test engine_test.cpp ../src/engine.cpp)
-target_link_libraries (engine_test PRIVATE Qt5::Core Qt5::Test)
-target_compile_definitions (engine_test PRIVATE ${ENGINE_TEST_DEFS})
-add_test (NAME engine_test COMMAND engine_test)
+add_executable (lwe_test lwe_test.cpp)
+target_link_libraries (lwe_test PRIVATE Qt5::Core Qt5::Test wallpaper_service)
+target_compile_definitions (lwe_test PRIVATE ${ENGINE_TEST_DEFS})
+add_test (NAME lwe_test COMMAND lwe_test)
+
+# T0：config::Config → lwe::Arguments 的域映射（观察窗口是 lwe::ToArgv）
+add_executable (projection_test projection_test.cpp)
+target_link_libraries (projection_test PRIVATE Qt5::Core Qt5::Test wallpaper_service)
+add_test (NAME projection_test COMMAND projection_test)
 
 # T0: Config persistence roundtrip
 add_executable (config_test config_test.cpp ../src/config.cpp)
@@ -64,7 +67,7 @@ add_test (NAME service_smoke_test COMMAND service_smoke_test)
 # T3: headless CLI end-to-end against the real user manager (isolated by
 # the dedicated wallpaper-engine-e2e-test unit name; config stays the user's own and is
 # restored by cleanup)
-add_executable (cli_e2e_test cli_e2e_test.cpp ../src/config.cpp ../src/engine_unit.cpp ../src/argvbuilder.cpp)
+add_executable (cli_e2e_test cli_e2e_test.cpp ../src/config.cpp ../src/engine_unit.cpp ../src/projection.cpp)
 target_link_libraries (cli_e2e_test PRIVATE Qt5::Core Qt5::DBus Qt5::Test wallpaper_service)
 target_compile_definitions (cli_e2e_test PRIVATE
     WALLPAPER_ENGINE_BIN="${CMAKE_BINARY_DIR}/wallpaper-engine")

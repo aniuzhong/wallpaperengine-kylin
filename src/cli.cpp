@@ -1,11 +1,10 @@
 #include "cli.h"
 
-#include "argvbuilder.h"
 #include "config.h"
-#include "engine.h"
 #include "engine_unit.h"
 #include "integration.h"
 #include "library.h"
+#include "lwe/grammar.h"
 #include "process.h"
 #include "report.h"
 
@@ -201,17 +200,27 @@ int CmdSwitch(const std::vector<std::string>& args, bool json) {
 
 int CmdProperties(const std::string& id) {
     const config::Config config = config::Config::Load();
-    // the engine model's second consumer: same grammar, same emission — no
-    // hand-built argv. The positional wallpaper id rides in the invocation.
-    engine::Invocation invocation;
-    invocation.assetsDir = config.assetsDir;
-    invocation.backgroundId = id;
-    invocation.listProperties = true;
+    // the grammar's second consumer: same table, same emission — no
+    // hand-built argv. The positional wallpaper id rides in the arguments.
+    lwe::Arguments arguments;
+    arguments.assetsDir = config.assetsDir;
+    arguments.backgroundId = id;
+    arguments.listProperties = true;
+
+    // validated in the direct-call scope: --list-properties is legal here,
+    // while "no background at all" is still refused before the spawn
+    const std::vector<lwe::Diagnostic> problems = lwe::Validate(arguments, lwe::Scope::DirectOnly);
+    if (!problems.empty()) {
+        we::Error error;
+        error.kind = we::Error::InvalidInput;
+        error.message = lwe::Describe(problems);
+        return Fail(false, "properties", error);
+    }
 
     std::string output;
     bool timedOut = false;
     const int exitCode = process::RunCaptured(
-        config.enginePath, engine::Emit(invocation),
+        config.enginePath, lwe::ToArgv(arguments),
         std::chrono::seconds(30), &output, &timedOut);
     // the engine's own listing, verbatim: buffered rather than streamed so a
     // frontend can publish it as one value

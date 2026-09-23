@@ -88,13 +88,6 @@ std::string FallbackScreenName() {
     return display::PrimaryOutput().value_or("DP-0");
 }
 
-std::vector<std::string> ScreenNames() {
-    auto names = display::Outputs();
-    if (names.empty())
-        names = { "DP-0" };
-    return names;
-}
-
 we::Result<void> ApplyConfig(const config::Config& config) {
     // the one apply chain: persist the desired state, project it into the
     // unit file the manager runs, reload, restart. The first failing step

@@ -14,11 +14,13 @@ namespace systemd {
 // through untouched.
 std::string CanonicalUnitName(const std::string& name);
 
-// systemd ExecStart entry: (path, argv, ignore-failure), i.e. type (sasb).
+// systemd ExecStart entry: (path, argv). The D-Bus wire type is (sasb) —
+// systemd wants the ignore-failure flag in the tuple, and the bus boundary
+// sets it off; nothing in this project ever turns it on, so it is not a
+// field here.
 struct ExecCommand {
     std::string program;
     std::vector<std::string> args;
-    bool ignoreFailure = false;
 };
 
 // Decompose argv into an ExecStart command (program = argv[0]). A null

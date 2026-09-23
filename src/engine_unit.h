@@ -46,11 +46,6 @@ we::Result<std::string> State();
 // connection, so call it at the boundary and pass the name down.
 std::string FallbackScreenName();
 
-// Every output the X server is currently driving, primary first — the
-// names --screen-root accepts. "DP-0" when no X server answers. Impure,
-// like FallbackScreenName.
-std::vector<std::string> ScreenNames();
-
 // The one apply chain: persist the desired state, project it into the unit
 // file the manager runs, reload, restart. The first failing step is the
 // error the caller sees, and one bus connection spans reload + restart.

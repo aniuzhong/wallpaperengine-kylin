@@ -106,9 +106,8 @@ endif()
 add_library(wallpaper_service STATIC
     src/systemd_unit.cpp
     src/exec_args.cpp
-    src/engine.cpp
     src/config.cpp
-    src/argvbuilder.cpp
+    src/projection.cpp
     src/library.cpp
     src/report.cpp
     src/peonybuilder.cpp
@@ -119,6 +118,9 @@ add_library(wallpaper_service STATIC
     src/process.cpp
     src/display.cpp
     src/unit_file.cpp
+    src/lwe/toargv.cpp
+    src/lwe/fromargv.cpp
+    src/lwe/validate.cpp
 )
 target_include_directories(wallpaper_service PUBLIC src ${XCB_RANDR_INCLUDE_DIRS} ${FREETYPE_INCLUDE_DIRS})
 target_link_libraries(wallpaper_service PUBLIC nlohmann_json::nlohmann_json tl::expected reproc++ stb::stb ${FREETYPE_LIBRARIES} ${XCB_LIBRARIES} ${XCB_RANDR_LIBRARIES} ${LIBSYSTEMD_LIBRARIES})
@@ -152,7 +154,7 @@ target_link_libraries(peony-alpha PRIVATE ${X11_LIBRARIES} ${XCB_LIBRARIES} fmt:
 # Two equivalent acquisition paths, everything stays inside build/:
 #   - third_party/linux-wallpaperengine (gitignored) holds a patched upstream
 #     checkout copied in by hand: zero network, used when present
-#   - otherwise cmake fetches upstream at LWPE_REF and applies patches/ —
+#   - otherwise cmake fetches upstream at LWE_REF and applies patches/ —
 #     this is what CI does, so a patch that no longer applies fails there
 # Requires cmake >= 3.22 for the glslang submodule; Kylin's 3.16 builds only
 # the controller (leave BUILD_ENGINE off).
@@ -161,7 +163,7 @@ if(BUILD_ENGINE)
     if(CMAKE_VERSION VERSION_LESS 3.22)
         message(FATAL_ERROR "BUILD_ENGINE needs cmake >= 3.22; run this build with a newer cmake (see Dockerfile deps stage)")
     endif()
-    set(LWPE_REF b016d7d1fdcf4e5fd2f9c9fa420a8aaa07fee02d CACHE STRING "upstream anchor")
+    set(LWE_REF b016d7d1fdcf4e5fd2f9c9fa420a8aaa07fee02d CACHE STRING "upstream anchor")
     include(ExternalProject)
     file(GLOB KYLIN_PATCHES ${CMAKE_SOURCE_DIR}/patches/*.patch)
     set(_ENGINE_ARGS
@@ -178,7 +180,7 @@ if(BUILD_ENGINE)
     else()
         ExternalProject_Add(linux-wallpaperengine
             GIT_REPOSITORY https://github.com/Almamu/linux-wallpaperengine.git
-            GIT_TAG ${LWPE_REF}
+            GIT_TAG ${LWE_REF}
             GIT_SUBMODULES_RECURSE ON
             PATCH_COMMAND git apply --verbose ${KYLIN_PATCHES}
             ${_ENGINE_ARGS}

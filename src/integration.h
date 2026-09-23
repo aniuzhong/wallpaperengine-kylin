@@ -22,7 +22,6 @@ namespace integration {
 struct Status {
     int64_t peonyPid = 0; // 0 when the desktop shell is not running
     bool shimLoaded = false;
-    bool Configured() const { return peonyPid != 0 && shimLoaded; }
 };
 
 // Scan /proc for the desktop shell process and check whether the shim is
