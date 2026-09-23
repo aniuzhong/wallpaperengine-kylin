@@ -3,7 +3,6 @@
 #include "argvbuilder.h"
 #include "config.h"
 #include "engine.h"
-#include "paths.h"
 #include "engine_unit.h"
 #include "integration.h"
 #include "library.h"
@@ -24,7 +23,41 @@
 
 #include <filesystem>
 
+#include <fcntl.h>
+#include <pwd.h>
+#include <unistd.h>
+
 namespace fs = std::filesystem;
+
+namespace we {
+namespace paths {
+
+inline std::string HomeDir() {
+    const char* home = getenv("HOME");
+    if (home != nullptr && *home != '\0')
+        return home;
+    if (const passwd* pw = getpwuid(getuid()); pw != nullptr && pw->pw_dir != nullptr)
+        return pw->pw_dir;
+    return {};
+}
+
+inline std::string ConfigHome() {
+    const char* configHome = getenv("XDG_CONFIG_HOME");
+    if (configHome != nullptr && *configHome != '\0')
+        return configHome;
+    return HomeDir() + "/.config";
+}
+
+inline std::string ProductConfigDir() {
+    return ConfigHome() + "/wallpaper-engine";
+}
+
+inline std::string ConfigFile() {
+    return ProductConfigDir() + "/config.json";
+}
+
+} // namespace paths
+} // namespace we
 
 namespace cli {
 

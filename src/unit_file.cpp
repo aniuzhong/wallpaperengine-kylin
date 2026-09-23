@@ -3,15 +3,37 @@
 #include "argvbuilder.h"
 #include "engine.h"
 #include "exec_args.h"
-#include "paths.h"
 #include "posix.h"
 
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <string>
+
+#include <pwd.h>
+#include <unistd.h>
 
 namespace fs = std::filesystem;
+
+namespace we {
+namespace paths {
+
+inline std::string HomeDir() {
+    const char* home = getenv("HOME");
+    if (home != nullptr && *home != '\0')
+        return home;
+    if (const passwd* pw = getpwuid(getuid()); pw != nullptr && pw->pw_dir != nullptr)
+        return pw->pw_dir;
+    return {};
+}
+
+inline std::string SystemdUserUnit(const std::string& unit) {
+    return HomeDir() + "/.config/systemd/user/" + unit + ".service";
+}
+
+} // namespace paths
+} // namespace we
 
 namespace unit_file {
 

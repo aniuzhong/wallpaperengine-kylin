@@ -1,7 +1,6 @@
 #include "../integration.h"
 #include "marker.h"
 
-#include "../paths.h"
 #include "../peonybuilder.h"
 #include "../posix.h"
 #include "../process.h"
@@ -20,11 +19,82 @@
 #include <fstream>
 #include <string>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
 
+#include <fcntl.h>
+#include <pwd.h>
+
 namespace fs = std::filesystem;
+
+namespace we {
+namespace paths {
+
+inline std::string HomeDir() {
+    const char* home = getenv("HOME");
+    if (home != nullptr && *home != '\0')
+        return home;
+    if (const passwd* pw = getpwuid(getuid()); pw != nullptr && pw->pw_dir != nullptr)
+        return pw->pw_dir;
+    return {};
+}
+
+inline std::string ExeDir() {
+    char buf[4096];
+    ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (n <= 0)
+        return {};
+    buf[static_cast<size_t>(n)] = '\0';
+    const std::string exe(buf);
+    const size_t slash = exe.find_last_of('/');
+    return slash == std::string::npos ? std::string() : exe.substr(0, slash);
+}
+
+inline std::string DataHome() {
+    const char* dataHome = getenv("XDG_DATA_HOME");
+    if (dataHome != nullptr && *dataHome != '\0')
+        return dataHome;
+    return HomeDir() + "/.local/share";
+}
+
+inline std::string ProductDataDir() {
+    return DataHome() + "/wallpaper-engine";
+}
+
+inline std::string PeonyDataDir() {
+    return ProductDataDir() + "/peony";
+}
+
+inline std::string PeonyMarker() {
+    return PeonyDataDir() + "/marker.png";
+}
+
+inline std::string PeonyPreviousBackground() {
+    return PeonyDataDir() + "/previous-background";
+}
+
+inline std::string PeonyShimLog() {
+    return PeonyDataDir() + "/peony-alpha.log";
+}
+
+inline std::vector<std::string> ShimCandidates() {
+    std::vector<std::string> candidates;
+    const std::string appDir = ExeDir();
+    if (!appDir.empty()) {
+        candidates.push_back(appDir + "/libpeony-alpha.so");
+        candidates.push_back(appDir + "/../lib/libpeony-alpha.so");
+        candidates.push_back(appDir + "/../lib64/libpeony-alpha.so");
+    }
+    candidates.push_back("/usr/lib/libpeony-alpha.so");
+    candidates.push_back("/usr/local/lib/libpeony-alpha.so");
+    candidates.push_back("/usr/lib/x86_64-linux-gnu/libpeony-alpha.so");
+    return candidates;
+}
+
+} // namespace paths
+} // namespace we
 
 namespace {
 

@@ -4,7 +4,6 @@
 // lifecycle assertions are hermetic: they need a session bus and nothing
 // else. The user's own config file is backed up wholesale and restored.
 #include "../src/config.h"
-#include "../src/paths.h"
 #include "../src/engine_unit.h"
 
 #include <QDBusConnection>
@@ -13,6 +12,40 @@
 #include <QProcess>
 #include <QTemporaryDir>
 #include <QtTest>
+
+#include <string>
+#include <pwd.h>
+#include <unistd.h>
+
+namespace we {
+namespace paths {
+
+inline std::string HomeDir() {
+    const char* home = getenv("HOME");
+    if (home != nullptr && *home != '\0')
+        return home;
+    if (const passwd* pw = getpwuid(getuid()); pw != nullptr && pw->pw_dir != nullptr)
+        return pw->pw_dir;
+    return {};
+}
+
+inline std::string ConfigHome() {
+    const char* configHome = getenv("XDG_CONFIG_HOME");
+    if (configHome != nullptr && *configHome != '\0')
+        return configHome;
+    return HomeDir() + "/.config";
+}
+
+inline std::string ProductConfigDir() {
+    return ConfigHome() + "/wallpaper-engine";
+}
+
+inline std::string ConfigFile() {
+    return ProductConfigDir() + "/config.json";
+}
+
+} // namespace paths
+} // namespace we
 
 #ifndef WALLPAPER_ENGINE_BIN
 #define WALLPAPER_ENGINE_BIN "/usr/bin/true"

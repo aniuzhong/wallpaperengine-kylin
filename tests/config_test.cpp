@@ -2,12 +2,44 @@
 // XDG_CONFIG_HOME is pointed at a temp directory in initTestCase so these
 // tests never touch the real ~/.config.
 #include "../src/config.h"
-#include "../src/paths.h"
 
 #include <QTemporaryDir>
 #include <QtTest>
 
 #include <filesystem>
+#include <string>
+#include <pwd.h>
+#include <unistd.h>
+
+namespace we {
+namespace paths {
+
+inline std::string HomeDir() {
+    const char* home = getenv("HOME");
+    if (home != nullptr && *home != '\0')
+        return home;
+    if (const passwd* pw = getpwuid(getuid()); pw != nullptr && pw->pw_dir != nullptr)
+        return pw->pw_dir;
+    return {};
+}
+
+inline std::string ConfigHome() {
+    const char* configHome = getenv("XDG_CONFIG_HOME");
+    if (configHome != nullptr && *configHome != '\0')
+        return configHome;
+    return HomeDir() + "/.config";
+}
+
+inline std::string ProductConfigDir() {
+    return ConfigHome() + "/wallpaper-engine";
+}
+
+inline std::string ConfigFile() {
+    return ProductConfigDir() + "/config.json";
+}
+
+} // namespace paths
+} // namespace we
 
 class ConfigTest : public QObject {
     Q_OBJECT

@@ -55,8 +55,6 @@
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 
-#include "../paths.h"
-
 #include <fmt/format.h>
 
 #include <cerrno>
@@ -65,9 +63,44 @@
 #include <string>
 
 #include <fcntl.h>
+#include <pwd.h>
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+
+namespace we {
+namespace paths {
+
+inline std::string HomeDir() {
+    const char* home = getenv("HOME");
+    if (home != nullptr && *home != '\0')
+        return home;
+    if (const passwd* pw = getpwuid(getuid()); pw != nullptr && pw->pw_dir != nullptr)
+        return pw->pw_dir;
+    return {};
+}
+
+inline std::string DataHome() {
+    const char* dataHome = getenv("XDG_DATA_HOME");
+    if (dataHome != nullptr && *dataHome != '\0')
+        return dataHome;
+    return HomeDir() + "/.local/share";
+}
+
+inline std::string ProductDataDir() {
+    return DataHome() + "/wallpaper-engine";
+}
+
+inline std::string PeonyDataDir() {
+    return ProductDataDir() + "/peony";
+}
+
+inline std::string PeonyShimLog() {
+    return PeonyDataDir() + "/peony-alpha.log";
+}
+
+} // namespace paths
+} // namespace we
 
 // ---- logging ---------------------------------------------------------------
 //

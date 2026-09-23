@@ -1,6 +1,5 @@
 #include "config.h"
 
-#include "paths.h"
 #include "posix.h"
 
 #include <nlohmann/json.hpp>
@@ -8,9 +7,106 @@
 #include <filesystem>
 #include <fstream>
 #include <vector>
+#include <string>
+
+#include <fcntl.h>
+#include <pwd.h>
+#include <unistd.h>
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
+
+namespace we {
+namespace paths {
+
+inline std::string HomeDir() {
+    const char* home = getenv("HOME");
+    if (home != nullptr && *home != '\0')
+        return home;
+    if (const passwd* pw = getpwuid(getuid()); pw != nullptr && pw->pw_dir != nullptr)
+        return pw->pw_dir;
+    return {};
+}
+
+inline std::string ExeDir() {
+    char buf[4096];
+    ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (n <= 0)
+        return {};
+    buf[static_cast<size_t>(n)] = '\0';
+    const std::string exe(buf);
+    const size_t slash = exe.find_last_of('/');
+    return slash == std::string::npos ? std::string() : exe.substr(0, slash);
+}
+
+inline std::string DataHome() {
+    const char* dataHome = getenv("XDG_DATA_HOME");
+    if (dataHome != nullptr && *dataHome != '\0')
+        return dataHome;
+    return HomeDir() + "/.local/share";
+}
+
+inline std::string ConfigHome() {
+    const char* configHome = getenv("XDG_CONFIG_HOME");
+    if (configHome != nullptr && *configHome != '\0')
+        return configHome;
+    return HomeDir() + "/.config";
+}
+
+inline std::string ProductDataDir() {
+    return DataHome() + "/wallpaper-engine";
+}
+
+inline std::string ProductConfigDir() {
+    return ConfigHome() + "/wallpaper-engine";
+}
+
+inline std::string ConfigFile() {
+    return ProductConfigDir() + "/config.json";
+}
+
+inline std::vector<std::string> EngineCandidates() {
+    std::vector<std::string> candidates {
+        "/opt/wallpaper-engine/linux-wallpaperengine",
+        "/usr/local/bin/linux-wallpaperengine",
+        "/usr/bin/linux-wallpaperengine",
+    };
+    const std::string appDir = ExeDir();
+    if (!appDir.empty()) {
+        candidates.push_back(appDir + "/../linux-wallpaperengine");
+        candidates.push_back(appDir + "/linux-wallpaperengine");
+    }
+    return candidates;
+}
+
+inline std::vector<std::string> SteamRoots() {
+    const std::string home = HomeDir();
+    return {
+        home + "/.steam/steam",
+        home + "/.local/share/Steam",
+        home + "/.var/app/com.valvesoftware.Steam/.local/share/Steam",
+        home + "/snap/steam/common/.local/share/Steam",
+    };
+}
+
+inline std::vector<std::string> SteamAssetsCandidates() {
+    static const char* suffix = "/steamapps/common/wallpaper_engine/assets";
+    std::vector<std::string> candidates;
+    for (const std::string& root : SteamRoots())
+        candidates.push_back(root + suffix);
+    return candidates;
+}
+
+inline std::vector<std::string> SteamWorkshopCandidates() {
+    static const char* suffix = "/steamapps/workshop/content/431960";
+    std::vector<std::string> candidates;
+    for (const std::string& root : SteamRoots())
+        candidates.push_back(root + suffix);
+    return candidates;
+}
+
+} // namespace paths
+} // namespace we
 
 namespace config {
 
